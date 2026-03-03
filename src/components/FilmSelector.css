@@ -1,0 +1,67 @@
+.film-selector-panel {
+    background: var(--panel-bg);
+    padding: 16px 24px;
+    border-bottom: 1px solid var(--border-color);
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+    z-index: 5;
+}
+
+.film-selector-header h2 {
+    font-size: 18px;
+    margin-bottom: 4px;
+}
+
+.film-selector-header p {
+    font-size: 13px;
+    color: var(--text-muted);
+    margin-bottom: 16px;
+}
+
+.film-options {
+    display: flex;
+    gap: 12px;
+    overflow-x: auto;
+    padding-bottom: 8px;
+}
+
+.film-option {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 16px 8px 8px;
+    background: var(--bg-color);
+    border: 2px solid transparent;
+    min-width: 200px;
+    text-align: left;
+}
+
+.film-option:hover {
+    background: #f1f5f9;
+}
+
+.film-option.selected {
+    border-color: var(--primary-color);
+    background: #eff6ff;
+}
+
+.film-color-preview {
+    width: 40px;
+    height: 40px;
+    border-radius: 6px;
+    border: 1px solid var(--border-color);
+}
+
+.film-info {
+    display: flex;
+    flex-direction: column;
+}
+
+.film-name {
+    font-weight: 600;
+    font-size: 14px;
+}
+
+.film-price {
+    font-size: 12px;
+    color: var(--text-muted);
+}

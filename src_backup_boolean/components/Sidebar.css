@@ -1,0 +1,51 @@
+.sidebar {
+    width: 280px;
+    background-color: var(--panel-bg);
+    border-right: 1px solid var(--border-color);
+    padding: 24px 16px;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 1px 0 3px rgba(0, 0, 0, 0.02);
+    z-index: 5;
+}
+
+.sidebar-title {
+    font-size: 16px;
+    font-weight: 700;
+    margin-bottom: 20px;
+    color: var(--text-main);
+    padding-left: 8px;
+}
+
+.tools-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+}
+
+.tool-btn {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 16px 8px;
+    background-color: var(--bg-color);
+    border: 1px solid var(--border-color);
+    color: var(--text-main);
+}
+
+.tool-btn:hover {
+    background-color: #eff6ff;
+    border-color: #bfdbfe;
+    color: var(--primary-color);
+}
+
+.tool-icon {
+    color: currentColor;
+}
+
+.tool-label {
+    font-size: 13px;
+    font-weight: 600;
+}
