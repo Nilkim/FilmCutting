@@ -360,7 +360,10 @@ function OrderPage() {
           <Menu size={22} />
         </button>
 
-        <div className="logo">코틸레돈 필름커팅</div>
+        <div className="logo">
+          <img src="/logo.svg" alt="COTYLEDON" className="brand-logo" />
+          <span className="brand-suffix">필름커팅</span>
+        </div>
 
         <Stepper
           currentStep={currentStep}
