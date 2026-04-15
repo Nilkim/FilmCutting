@@ -362,7 +362,7 @@ function OrderPage() {
 
         <div className="logo">
           <img src="/logo.svg" alt="COTYLEDON" className="brand-logo" />
-          <span className="brand-suffix">필름커팅</span>
+          <span className="brand-suffix">필름모양내기</span>
         </div>
 
         <Stepper
