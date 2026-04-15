@@ -42,7 +42,7 @@ function OrderCompletePage() {
         <p style={{ color: '#475569', lineHeight: 1.6 }}>
           주문이 정상적으로 접수되었습니다.
           <br />
-          아래 주문번호를 결제 플랫폼에 입력해주세요.
+          아래 주문번호를 결제 플랫폼 배송메세지에 입력해주세요.
         </p>
 
         <div
