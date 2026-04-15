@@ -4,7 +4,6 @@ import { v4 as uuidv4 } from 'uuid';
 import { processTargetBoolean } from '../utils/shapeBoolean';
 import { exportShapesToDXF, importDXFtoShapes } from '../utils/dxfExport';
 import { useHistory } from '../hooks/useHistory';
-import { KoreanSafeInput } from '../components/KoreanSafeInput';
 import { useFilms } from '../hooks/useFilms';
 import { useReorderLoader } from '../hooks/useReorderLoader';
 import { supabase } from '../lib/supabase';
@@ -74,7 +73,6 @@ function OrderPage() {
   const { state: shapes, set: setShapes, undo, redo, canUndo, canRedo } = useHistory([], 5);
   const [activeShapeId, setActiveShapeId] = useState(null);
   const [isOrderFormOpen, setIsOrderFormOpen] = useState(false);
-  const [customerName, setCustomerName] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [formErrors, setFormErrors] = useState({});
@@ -253,11 +251,9 @@ function OrderPage() {
   })();
 
   const handleSubmitOrder = async () => {
-    const nameTrimmed = customerName.trim();
     const phoneDigits = customerPhone.replace(/\D/g, '');
 
     const errs = {};
-    if (!nameTrimmed) errs.name = '이름을 입력해 주세요.';
     if (phoneDigits.length < 10) errs.phone = '전화번호를 10자리 이상 입력해 주세요.';
     if (Object.keys(errs).length) {
       setFormErrors(errs);
@@ -303,7 +299,7 @@ function OrderPage() {
 
       const { error: insertError } = await supabase.from('orders').insert({
         order_code: orderCode,
-        customer_name: nameTrimmed,
+        customer_name: '',
         phone: phoneDigits,
         film_id: selectedFilm.id,
         film_snapshot: filmSnapshot,
@@ -364,7 +360,7 @@ function OrderPage() {
           <Menu size={22} />
         </button>
 
-        <div className="logo">FILM CUTTING</div>
+        <div className="logo">코틸레돈 필름커팅</div>
 
         <Stepper
           currentStep={currentStep}
@@ -525,32 +521,6 @@ function OrderPage() {
               주문을 접수하려면 아래 정보를 입력해 주세요.
             </p>
 
-            <div style={{ marginBottom: '12px' }}>
-              <label style={{ display: 'block', fontSize: '13px', fontWeight: 'bold', marginBottom: '4px' }}>
-                이름 <span style={{ color: '#dc2626' }}>*</span>
-              </label>
-              <KoreanSafeInput
-                type="text"
-                value={customerName}
-                onChange={(v) => {
-                  setCustomerName(v);
-                  if (formErrors.name) setFormErrors((prev) => ({ ...prev, name: null }));
-                }}
-                disabled={submitting}
-                placeholder="성함을 입력하세요"
-                style={{
-                  width: '100%', padding: '10px',
-                  border: `1px solid ${formErrors.name ? '#dc2626' : '#cbd5e1'}`,
-                  borderRadius: '4px', fontSize: '14px', boxSizing: 'border-box'
-                }}
-              />
-              {formErrors.name && (
-                <div style={{ color: '#dc2626', fontSize: '12px', marginTop: '4px' }}>
-                  {formErrors.name}
-                </div>
-              )}
-            </div>
-
             <div style={{ marginBottom: '16px' }}>
               <label style={{ display: 'block', fontSize: '13px', fontWeight: 'bold', marginBottom: '4px' }}>
                 전화번호 <span style={{ color: '#dc2626' }}>*</span>
@@ -567,6 +537,9 @@ function OrderPage() {
                   borderRadius: '4px', fontSize: '14px', boxSizing: 'border-box'
                 }}
               />
+              <div style={{ color: '#b45309', fontSize: '12px', marginTop: '6px', fontWeight: 600 }}>
+                ⚠ 플랫폼 결제 시에도 반드시 <u>동일한 전화번호</u>로 주문해 주세요.
+              </div>
               {formErrors.phone && (
                 <div style={{ color: '#dc2626', fontSize: '12px', marginTop: '4px' }}>
                   {formErrors.phone}

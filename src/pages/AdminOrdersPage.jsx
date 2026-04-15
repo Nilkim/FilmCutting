@@ -293,7 +293,7 @@ function AdminOrdersPage() {
                     <td style={{ ...td, fontFamily: 'monospace', fontSize: 15 }}>
                       {o.order_code}
                     </td>
-                    <td style={td}>{o.customer_name}</td>
+                    <td style={td}>{o.customer_name || '—'}</td>
                     <td style={td}>{formatPhone(o.phone)}</td>
                     <td style={td}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>

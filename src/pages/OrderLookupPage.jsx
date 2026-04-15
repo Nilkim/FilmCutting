@@ -68,7 +68,8 @@ export default function OrderLookupPage() {
     });
     setLoading(false);
     if (rpcError) {
-      setError('조회 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.');
+      console.error('order lookup rpc error:', rpcError);
+      setError(`조회 실패: ${rpcError.message || rpcError.code || '알 수 없는 오류'}`);
       return;
     }
     setResults(data || []);
