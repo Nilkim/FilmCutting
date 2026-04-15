@@ -17,16 +17,10 @@ const FilmSelector = ({ films, selectedFilm, onSelect }) => {
                             className={`film-option ${isSelected ? 'selected' : ''}`}
                             onClick={() => onSelect(film)}
                         >
-                            <div className="film-preview-image">
-                                {film.previewImageUrl ? (
-                                    <img src={film.previewImageUrl} alt={film.name} />
-                                ) : (
-                                    <div
-                                        className="film-preview-fallback"
-                                        style={{ backgroundColor: film.color }}
-                                    />
-                                )}
-                            </div>
+                            <div
+                                className="film-color-preview"
+                                style={{ backgroundColor: film.color }}
+                            />
                             <div className="film-info">
                                 <span className="film-name">{film.name}</span>
                                 <span className="film-price">{film.pricePer500.toLocaleString()}원 / 0.5m</span>

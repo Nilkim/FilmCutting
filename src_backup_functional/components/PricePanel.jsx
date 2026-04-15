@@ -1,7 +1,7 @@
 import React from 'react';
 import './PricePanel.css';
 
-const PricePanel = ({ selectedFilm, maxLength, onOrder, canOrder = true }) => {
+const PricePanel = ({ selectedFilm, maxLength }) => {
     // Logic to round up to nearest 500mm
     const billableLength = Math.ceil(Math.max(maxLength, 0) / 500) * 500;
     const unitCount = billableLength / 500;
@@ -46,13 +46,8 @@ const PricePanel = ({ selectedFilm, maxLength, onOrder, canOrder = true }) => {
                 <div className="total-price">{totalPrice.toLocaleString()}<span>원</span></div>
             </div>
 
-            <button
-                className="order-btn"
-                onClick={onOrder}
-                disabled={!canOrder}
-                title={canOrder ? '주문 접수' : '도형을 하나 이상 그려주세요'}
-            >
-                주문 접수
+            <button className="order-btn">
+                주문하기 (Proceed to Order)
             </button>
         </div>
     );

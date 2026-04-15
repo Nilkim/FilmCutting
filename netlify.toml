@@ -1,0 +1,12 @@
+[build]
+  command = "npm run build"
+  publish = "dist"
+
+[build.environment]
+  NODE_VERSION = "20"
+
+# SPA fallback — React Router 경로 직접 접속 시 index.html 반환
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200

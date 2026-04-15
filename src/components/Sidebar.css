@@ -2,25 +2,133 @@
     width: 280px;
     background-color: var(--panel-bg);
     border-right: 1px solid var(--border-color);
-    padding: 24px 16px;
+    padding: 20px 16px;
     display: flex;
     flex-direction: column;
     box-shadow: 1px 0 3px rgba(0, 0, 0, 0.02);
     z-index: 5;
+    overflow-y: auto;
+}
+
+.sidebar-section {
+    /* Spacing handled by dividers */
 }
 
 .sidebar-title {
-    font-size: 16px;
+    font-size: 13px;
     font-weight: 700;
-    margin-bottom: 20px;
+    margin-bottom: 12px;
+    color: var(--text-muted);
+    padding-left: 4px;
+    letter-spacing: 0.3px;
+    text-transform: uppercase;
+}
+
+.sidebar-divider {
+    height: 1px;
+    background-color: var(--border-color);
+    margin: 18px 0;
+    opacity: 0.7;
+}
+
+/* Film indicator card inside sidebar */
+.film-indicator-section {
+    padding-top: 4px;
+}
+
+.current-film-card {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    background: #f8fafc;
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+}
+
+.current-film-swatch {
+    width: 40px;
+    height: 40px;
+    border-radius: 8px;
+    overflow: hidden;
+    border: 1px solid rgba(0, 0, 0, 0.1);
+    flex: 0 0 auto;
+    background: #f8fafc;
+}
+
+.current-film-swatch img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+
+.current-film-swatch-fallback {
+    width: 100%;
+    height: 100%;
+}
+
+.current-film-meta {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    overflow: hidden;
+}
+
+.current-film-name {
+    font-size: 13px;
+    font-weight: 700;
     color: var(--text-main);
-    padding-left: 8px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.current-film-price {
+    font-size: 11px;
+    color: var(--primary-color);
+    font-weight: 600;
+}
+
+.current-film-change-btn {
+    flex: 0 0 auto;
+    padding: 6px 10px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--primary-color);
+    background: #eff6ff;
+    border: 1px solid #bfdbfe;
+    border-radius: 6px;
+    cursor: pointer;
+}
+
+.current-film-change-btn:hover {
+    background: #dbeafe;
+}
+
+.film-select-cta {
+    width: 100%;
+    padding: 12px;
+    background: var(--primary-color);
+    color: #fff;
+    border: none;
+    border-radius: 10px;
+    font-weight: 700;
+    font-size: 14px;
+    cursor: pointer;
+    box-shadow: 0 2px 6px rgba(0, 122, 255, 0.2);
+}
+
+.film-select-cta:hover {
+    background: var(--primary-hover);
 }
 
 .tools-grid {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    gap: 12px;
+    gap: 10px;
 }
 
 .tool-btn {
@@ -29,16 +137,20 @@
     align-items: center;
     justify-content: center;
     gap: 8px;
-    padding: 16px 8px;
+    padding: 14px 8px;
     background-color: var(--bg-color);
     border: 1px solid var(--border-color);
     color: var(--text-main);
+    border-radius: 10px;
+    transition: all 0.2s ease;
 }
 
 .tool-btn:hover {
     background-color: #eff6ff;
     border-color: #bfdbfe;
     color: var(--primary-color);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 6px -1px rgba(0, 122, 255, 0.1);
 }
 
 .tool-icon {
@@ -48,4 +160,110 @@
 .tool-label {
     font-size: 13px;
     font-weight: 600;
+}
+
+.action-row {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.action-btn-row {
+    flex-direction: row !important;
+    width: 100%;
+    padding: 12px;
+}
+
+.file-import-btn {
+    background: #f0fdf4 !important;
+    border-color: #bbf7d0 !important;
+    color: #15803d !important;
+    cursor: pointer;
+    display: flex !important;
+}
+
+.section-hint {
+    font-size: 11px;
+    color: var(--text-muted);
+    line-height: 1.4;
+    margin-top: 6px;
+    text-align: center;
+}
+
+/* --- Mobile vertical stack (sidebar flows inline above canvas) --- */
+@media (max-width: 768px) {
+    .sidebar {
+        width: 100% !important;
+        max-width: none;
+        height: auto;
+        transform: none;
+        transition: none;
+        box-shadow: none;
+        flex-direction: column !important;
+        overflow: visible !important;
+        padding: 8px 12px;
+        border-right: none;
+        border-bottom: 1px solid var(--border-color);
+        gap: 6px;
+    }
+
+    .sidebar-section {
+        padding: 4px 0;
+    }
+
+    .sidebar-title {
+        margin-bottom: 6px;
+        font-size: 11px;
+    }
+
+    .sidebar-divider {
+        margin: 4px 0;
+    }
+
+    /* 도형 추가: 5개 버튼 한 줄에 */
+    .tools-grid {
+        grid-template-columns: repeat(5, 1fr);
+        gap: 6px;
+    }
+
+    .tool-btn {
+        padding: 8px 4px;
+        gap: 4px;
+        border-radius: 8px;
+    }
+
+    .tool-icon svg {
+        width: 18px;
+        height: 18px;
+    }
+
+    .tool-label {
+        font-size: 11px;
+    }
+
+    /* 편집/파일: 가로 나열 */
+    .action-row {
+        flex-direction: row;
+    }
+
+    .action-btn-row {
+        flex: 1;
+        padding: 10px 8px !important;
+        font-size: 12px;
+        min-width: 0;
+    }
+
+    .action-btn-row svg {
+        flex-shrink: 0;
+    }
+
+    .section-hint {
+        margin-top: 4px;
+        font-size: 10px;
+    }
+
+    /* 필름 카드 압축 */
+    .current-film-card {
+        padding: 8px !important;
+    }
 }
