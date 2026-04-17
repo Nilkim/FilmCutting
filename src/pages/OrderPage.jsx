@@ -12,6 +12,7 @@ import FilmSelector from '../components/FilmSelector';
 import Sidebar from '../components/Sidebar';
 import PricePanel from '../components/PricePanel';
 import DrawingCanvas from '../components/DrawingCanvas';
+import ShapeInputModal from '../components/ShapeInputModal';
 
 function getSeoulDayKey() {
   const now = new Date();
@@ -78,6 +79,8 @@ function OrderPage() {
   const [formErrors, setFormErrors] = useState({});
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [priceSheetOpen, setPriceSheetOpen] = useState(false);
+  const [shapeModal, setShapeModal] = useState(null);
+  // shapeModal = null (closed) or { kind, editingId: string|null, initialParams: object|null }
 
   useReorderLoader({ films, setSelectedFilm, setShapes, setIsModalOpen });
 
@@ -97,31 +100,48 @@ function OrderPage() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [undo, redo]);
 
-  const handleAddShape = (type) => {
-    let newShape = {
-      id: uuidv4(),
-      type,
-      x: 100,
-      y: 100,
-      rotation: 0
-    };
+  const handleRequestShape = (kind) => {
+    setShapeModal({ kind, editingId: null, initialParams: null });
+    setSidebarOpen(false);
+  };
 
-    if (type === 'rect') {
-      newShape = { ...newShape, width: 200, height: 200 };
-    } else if (type === 'circle') {
-      newShape = { ...newShape, radius: 100 };
-    } else if (type === 'triangle' || type === 'star') {
-      newShape = { ...newShape, radius: 120 };
-      if (type === 'star') {
-        newShape = { ...newShape, numPoints: 5, innerRadius: 50, outerRadius: 100 };
-        delete newShape.radius;
-      }
-    } else if (type === 'bubble') {
-      newShape = { ...newShape, scaleX: 2, scaleY: 2 };
+  const handleEditShape = (shapeId) => {
+    const shape = shapes.find((s) => s.id === shapeId);
+    if (!shape || shape.type !== 'parametric') return;
+    setShapeModal({ kind: shape.kind, editingId: shapeId, initialParams: shape.params });
+  };
+
+  const handleDeleteShape = (shapeId) => {
+    setShapes((prev) => prev.filter((s) => s.id !== shapeId));
+    setActiveShapeId(null);
+  };
+
+  const handleShapeModalConfirm = ({ kind, params, pathData, width, height }) => {
+    if (shapeModal?.editingId) {
+      setShapes((prev) => prev.map((s) =>
+        s.id === shapeModal.editingId
+          ? { ...s, kind, params, pathData, width, height, rotation: params.rotation ?? 0 }
+          : s
+      ));
+    } else {
+      const newShape = {
+        id: uuidv4(),
+        type: 'parametric',
+        kind,
+        params,
+        pathData,
+        width,
+        height,
+        x: 610,
+        y: 400,
+        rotation: params.rotation ?? 0,
+        scaleX: 1,
+        scaleY: 1,
+      };
+      setShapes((prev) => [...prev, newShape]);
+      setActiveShapeId(newShape.id);
     }
-
-    setShapes(prev => [...prev, newShape]);
-    setActiveShapeId(newShape.id);
+    setShapeModal(null);
   };
 
   const handleMergeShapes = (type) => {
@@ -411,7 +431,7 @@ function OrderPage() {
         )}
         <div className={`sidebar-wrapper sidebar-desktop ${sidebarOpen ? 'open' : ''}`}>
           <Sidebar
-            onAddShape={(t) => { handleAddShape(t); setSidebarOpen(false); }}
+            onRequestShape={handleRequestShape}
             onMergeShapes={handleMergeShapes}
             onImportDXF={handleImportDXF}
             selectedFilm={selectedFilm}
@@ -422,7 +442,7 @@ function OrderPage() {
         <div className="sidebar-wrapper sidebar-mobile-top">
           <Sidebar
             section="top"
-            onAddShape={handleAddShape}
+            onRequestShape={handleRequestShape}
             selectedFilm={selectedFilm}
             onOpenFilmSelector={() => setIsModalOpen(true)}
           />
@@ -438,6 +458,8 @@ function OrderPage() {
                 activeShapeId={activeShapeId}
                 setActiveShapeId={setActiveShapeId}
                 maxLength={calculateMaxLength()}
+                onEditShape={handleEditShape}
+                onDeleteShape={handleDeleteShape}
               />
             </div>
           ) : (
@@ -601,6 +623,15 @@ function OrderPage() {
             </button>
           </div>
         </div>
+      )}
+
+      {shapeModal && (
+        <ShapeInputModal
+          kind={shapeModal.kind}
+          initialParams={shapeModal.initialParams}
+          onConfirm={handleShapeModalConfirm}
+          onCancel={() => setShapeModal(null)}
+        />
       )}
     </div>
   );

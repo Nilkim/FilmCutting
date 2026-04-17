@@ -1,14 +1,14 @@
 import React, { useRef, useEffect, useState } from 'react';
-import { Stage, Layer, Group, Rect, Circle, RegularPolygon, Star, Path, Line, Transformer } from 'react-konva';
+import { Stage, Layer, Group, Rect, Circle, RegularPolygon, Star, Path, Line } from 'react-konva';
 import './DrawingCanvas.css';
 
 // Physics scale: Let's assume 1mm = 1px for easy mapping.
-// Film width is 1220mm -> 1220px. 
+// Film width is 1220mm -> 1220px.
 // We will scale the stage to fit the container width.
 const FILM_WIDTH_MM = 1220;
 const GRID_INTERVAL = 500;
 
-// Speech bubble path (approximate)
+// Speech bubble path (approximate) — legacy
 const SpeechBubblePath = "M0 0 H 100 V 70 H 20 L 0 100 L 0 70 V 0 Z";
 
 // Render strokes on top of all fills so overlapping lines are never hidden
@@ -31,6 +31,8 @@ const StrokeOverlay = ({ shapes }) => {
                 const key = `stroke-${shape.id}`;
 
                 switch (shape.type) {
+                    case 'parametric':
+                        return <Path key={key} {...props} data={shape.pathData} />;
                     case 'rect': return <Rect key={key} {...props} width={shape.width} height={shape.height} cornerRadius={shape.cornerRadius} />;
                     case 'circle': return <Circle key={key} {...props} radius={shape.radius} />;
                     case 'triangle': return <RegularPolygon key={key} {...props} sides={3} radius={shape.radius} />;
@@ -44,17 +46,10 @@ const StrokeOverlay = ({ shapes }) => {
     );
 };
 
-// Shape Wrapper component that handles selection and transformation
-const ShapeObject = ({ shapeProps, isSelected, onSelect, onChange, canvasScale, selectedFilm }) => {
+// Shape Wrapper component: drag only, no resize/rotate handles.
+// Selection is shown via a thicker stroke (see `isSelected` below).
+const ShapeObject = ({ shapeProps, isSelected, onSelect, onChange, onDoubleClick, canvasScale, selectedFilm }) => {
     const shapeRef = useRef();
-    const trRef = useRef();
-
-    useEffect(() => {
-        if (isSelected && trRef.current) {
-            trRef.current.nodes([shapeRef.current]);
-            trRef.current.getLayer().batchDraw();
-        }
-    }, [isSelected]);
 
     const commonProps = {
         ...shapeProps,
@@ -62,6 +57,8 @@ const ShapeObject = ({ shapeProps, isSelected, onSelect, onChange, canvasScale, 
         draggable: true,
         onClick: onSelect,
         onTap: onSelect,
+        onDblClick: onDoubleClick,
+        onDblTap: onDoubleClick,
         dragBoundFunc: (pos) => {
             return {
                 x: pos.x,
@@ -75,44 +72,36 @@ const ShapeObject = ({ shapeProps, isSelected, onSelect, onChange, canvasScale, 
                 y: e.target.y(),
             });
         },
-        onTransformEnd: (e) => {
-            const node = shapeRef.current;
-            const finalScaleX = node.scaleX();
-            const finalScaleY = node.scaleY();
-
-            // reset scale back so the node doesn't double-scale when React re-renders it with new props
-            node.scaleX(1);
-            node.scaleY(1);
-
-            let updatedProps = {
-                ...shapeProps,
-                x: node.x(),
-                y: node.y(),
-                rotation: node.rotation(),
-                // node.scaleX/Y is already the final absolute scale set by Transformer
-                scaleX: finalScaleX,
-                scaleY: finalScaleY,
-            };
-
-            onChange(updatedProps);
-        },
-        // Apply accumulated scale explicitly to maintain squish
+        // Apply stored scale explicitly (legacy shapes may have non-1 scale)
         scaleX: shapeProps.scaleX || 1,
         scaleY: shapeProps.scaleY || 1,
+        rotation: shapeProps.rotation || 0,
         // Restored solid fills. The StrokeOverlay will ensure lines remain visible on top.
         fill: shapeProps.isDxf ? null : selectedFilm.color,
-        stroke: shapeProps.isDxf ? '#ffffff' : '#000000', // Black outlines for drawn shapes, White for DXF
-        strokeWidth: 2, // Fixed stroke width for all drawn & imported shapes
-        strokeScaleEnabled: false, // Prevent border from getting thick when squished
-        hitStrokeWidth: shapeProps.isDxf ? 12 / canvasScale : 0, // Adds 6px of invisible click area on both sides of the line for DXF
+        // Selection feedback: thicker, highlighted stroke while selected
+        stroke: isSelected ? '#1e88e5' : (shapeProps.isDxf ? '#ffffff' : '#000000'),
+        strokeWidth: isSelected ? 4 : 2,
+        strokeScaleEnabled: false,
+        hitStrokeWidth: shapeProps.isDxf ? 12 / canvasScale : 0,
         shadowColor: 'black',
         shadowBlur: 10,
         shadowOffset: { x: 5, y: 5 },
-        shadowOpacity: shapeProps.isDxf ? 0 : 0.3, // Restored shadow
+        shadowOpacity: shapeProps.isDxf ? 0 : 0.3,
     };
 
     let ShapeComponent;
     switch (shapeProps.type) {
+        case 'parametric':
+            // Parametric shapes: pathData already centered on (0,0) by generator.
+            ShapeComponent = (
+                <Path
+                    data={shapeProps.pathData}
+                    offsetX={0}
+                    offsetY={0}
+                    {...commonProps}
+                />
+            );
+            break;
         case 'rect':
             ShapeComponent = <Rect {...commonProps} />;
             break;
@@ -126,7 +115,6 @@ const ShapeObject = ({ shapeProps, isSelected, onSelect, onChange, canvasScale, 
             ShapeComponent = <Star numPoints={shapeProps.numPoints || 5} innerRadius={shapeProps.innerRadius} outerRadius={shapeProps.outerRadius} {...commonProps} />;
             break;
         case 'bubble':
-            // Using scale instead of explicit width/height for path
             ShapeComponent = <Path data={SpeechBubblePath} {...commonProps} />;
             break;
         case 'path':
@@ -136,26 +124,10 @@ const ShapeObject = ({ shapeProps, isSelected, onSelect, onChange, canvasScale, 
             ShapeComponent = null;
     }
 
-    return (
-        <React.Fragment>
-            {ShapeComponent}
-            {isSelected && (
-                <Transformer
-                    ref={trRef}
-                    ignoreStroke={true}
-                    boundBoxFunc={(oldBox, newBox) => {
-                        if (newBox.width < 10 || newBox.height < 10) {
-                            return oldBox;
-                        }
-                        return newBox;
-                    }}
-                />
-            )}
-        </React.Fragment>
-    );
+    return ShapeComponent;
 };
 
-const DrawingCanvas = ({ selectedFilm, shapes, setShapes, activeShapeId, setActiveShapeId, maxLength }) => {
+const DrawingCanvas = ({ selectedFilm, shapes, setShapes, activeShapeId, setActiveShapeId, maxLength, onEditShape, onDeleteShape }) => {
     const containerRef = useRef();
     const [stageSize, setStageSize] = useState({ width: 0, height: 0 });
     const [scale, setScale] = useState(1);
@@ -190,23 +162,40 @@ const DrawingCanvas = ({ selectedFilm, shapes, setShapes, activeShapeId, setActi
         }
     };
 
+    // Del/Backspace to delete selected shape — with input-focus guard
     useEffect(() => {
         const handleKeyDown = (e) => {
-            if (e.key === 'Delete' || e.key === 'Backspace') {
-                if (activeShapeId) {
-                    setShapes((prevShapes) => prevShapes.filter(s => s.id !== activeShapeId));
-                    setActiveShapeId(null);
+            if (e.key !== 'Delete' && e.key !== 'Backspace') return;
+            if (!activeShapeId) return;
+            const active = document.activeElement;
+            if (active) {
+                const tag = active.tagName;
+                if (tag === 'INPUT' || tag === 'TEXTAREA' || active.isContentEditable) {
+                    return;
                 }
+            }
+            if (typeof onDeleteShape === 'function') {
+                onDeleteShape(activeShapeId);
+            } else {
+                // Fallback to old behavior if no callback supplied
+                setShapes((prevShapes) => prevShapes.filter(s => s.id !== activeShapeId));
+                setActiveShapeId(null);
             }
         };
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [activeShapeId, setShapes, setActiveShapeId]);
+    }, [activeShapeId, setShapes, setActiveShapeId, onDeleteShape]);
 
     const handleShapeChange = (index, newProps) => {
         const rects = shapes.slice();
         rects[index] = newProps;
         setShapes(rects);
+    };
+
+    const handleDoubleClick = (shape) => {
+        if (shape.type === 'parametric' && typeof onEditShape === 'function') {
+            onEditShape(shape.id);
+        }
     };
 
     // Generate grid lines (horizontal and vertical)
@@ -347,6 +336,7 @@ const DrawingCanvas = ({ selectedFilm, shapes, setShapes, activeShapeId, setActi
                                     isSelected={shape.id === activeShapeId}
                                     onSelect={() => setActiveShapeId(shape.id)}
                                     onChange={(newProps) => handleShapeChange(i, newProps)}
+                                    onDoubleClick={() => handleDoubleClick(shape)}
                                     canvasScale={scale}
                                     selectedFilm={selectedFilm}
                                 />

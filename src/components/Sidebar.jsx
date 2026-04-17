@@ -52,7 +52,7 @@ const FilmSection = ({ selectedFilm, onOpenFilmSelector }) => (
     </div>
 );
 
-const AddShapeSection = ({ onAddShape }) => (
+const AddShapeSection = ({ onRequestShape }) => (
     <div className="sidebar-section">
         <div className="sidebar-title">도형 추가</div>
         <div className="tools-grid">
@@ -60,7 +60,8 @@ const AddShapeSection = ({ onAddShape }) => (
                 <button
                     key={tool.id}
                     className="tool-btn"
-                    onClick={() => onAddShape(tool.id)}
+                    onClick={() => onRequestShape(tool.id)}
+                    onMouseUp={(e) => e.currentTarget.blur()}
                 >
                     <div className="tool-icon">{tool.icon}</div>
                     <span className="tool-label">{tool.label}</span>
@@ -111,7 +112,7 @@ const FileSection = ({ onImportDXF }) => (
 const Divider = () => <div className="sidebar-divider" />;
 
 const Sidebar = ({
-    onAddShape,
+    onRequestShape,
     onMergeShapes,
     onImportDXF,
     selectedFilm,
@@ -124,7 +125,7 @@ const Sidebar = ({
             <aside className={`sidebar sidebar-part ${className}`}>
                 <FilmSection selectedFilm={selectedFilm} onOpenFilmSelector={onOpenFilmSelector} />
                 <Divider />
-                <AddShapeSection onAddShape={onAddShape} />
+                <AddShapeSection onRequestShape={onRequestShape} />
             </aside>
         );
     }
@@ -141,7 +142,7 @@ const Sidebar = ({
         <aside className={`sidebar ${className}`}>
             <FilmSection selectedFilm={selectedFilm} onOpenFilmSelector={onOpenFilmSelector} />
             <Divider />
-            <AddShapeSection onAddShape={onAddShape} />
+            <AddShapeSection onRequestShape={onRequestShape} />
             <Divider />
             <EditSection onMergeShapes={onMergeShapes} />
             <Divider />
