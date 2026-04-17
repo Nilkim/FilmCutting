@@ -31,7 +31,7 @@ create index if not exists films_active_order_idx
 -- ============================================================
 create table if not exists public.orders (
   id              uuid primary key default gen_random_uuid(),
-  order_code      text not null unique,     -- {phone8}-{YYYYMMDD}-{seq3}
+  order_code      text not null unique,     -- {phone4}-{YYMMDD}-{seq3}
   customer_name   text not null,
   phone           text not null,            -- digits only (no hyphens)
   film_id         uuid references public.films(id) on delete set null,
@@ -69,7 +69,7 @@ create trigger orders_updated_at
 --    Usage from client:  select public.next_order_seq('20260414');
 -- ============================================================
 create table if not exists public.order_daily_seq (
-  day_key  text primary key,    -- 'YYYYMMDD'
+  day_key  text primary key,    -- 'YYMMDD'
   last_seq integer not null default 0
 );
 

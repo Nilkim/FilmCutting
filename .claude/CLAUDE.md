@@ -26,7 +26,7 @@
 - 필름 폭: 1220mm (DrawingCanvas `FILM_WIDTH_MM`)
 - 과금 단위: 0.5m (500mm) 반올림
 - 내부 좌표계 1:1 mm = 캔버스 유닛
-- 주문번호 포맷: `{전화뒷8자리}-{YYYYMMDD}-{그날의순번3자리}`
+- 주문번호 포맷: `{전화뒷4자리}-{YYMMDD}-{그날의순번3자리}`
 - Supabase RLS: anon은 활성 필름 SELECT + 주문 INSERT 가능, 인증된 관리자만 전체 권한
 - 파비콘/로고: `public/favicon.ico`, `public/logo.svg` (코틸레돈 브랜드 자원)
 

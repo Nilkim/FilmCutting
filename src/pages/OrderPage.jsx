@@ -15,10 +15,11 @@ import DrawingCanvas from '../components/DrawingCanvas';
 import ShapeInputModal from '../components/ShapeInputModal';
 
 function getSeoulDayKey() {
+  // YYMMDD (서울 시각 기준, 2자리 연도)
   const now = new Date();
   const parts = new Intl.DateTimeFormat('en-CA', {
     timeZone: 'Asia/Seoul',
-    year: 'numeric',
+    year: '2-digit',
     month: '2-digit',
     day: '2-digit',
   }).formatToParts(now);
@@ -267,8 +268,8 @@ function OrderPage() {
   const previewOrderCode = (() => {
     const digits = customerPhone.replace(/\D/g, '');
     if (digits.length < 8) return null;
-    const phone8 = digits.slice(-8);
-    return `${phone8}-${getSeoulDayKey()}-???`;
+    const phone4 = digits.slice(-4);
+    return `${phone4}-${getSeoulDayKey()}-???`;
   })();
 
   const handleSubmitOrder = async () => {
@@ -283,7 +284,7 @@ function OrderPage() {
 
     setSubmitting(true);
     try {
-      const phone8 = phoneDigits.slice(-8);
+      const phone4 = phoneDigits.slice(-4);
       const dayKey = getSeoulDayKey();
 
       const { data: seq, error: seqError } = await supabase.rpc('next_order_seq', {
@@ -292,7 +293,7 @@ function OrderPage() {
       if (seqError) throw seqError;
 
       const seqNum = typeof seq === 'number' ? seq : parseInt(seq, 10);
-      const orderCode = `${phone8}-${dayKey}-${String(seqNum).padStart(3, '0')}`;
+      const orderCode = `${phone4}-${dayKey}-${String(seqNum).padStart(3, '0')}`;
 
       const dxfString = exportShapesToDXF(shapes);
       if (!dxfString) throw new Error('DXF 변환에 실패했습니다.');
