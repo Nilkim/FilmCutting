@@ -391,6 +391,9 @@
   .canvas-scroll-wrapper {
     overflow: visible;
     width: 100%;
+    /* 세로 스와이프는 페이지 스크롤에 양보, 가로 방향만 Konva에게 위임.
+       캔버스 영역을 터치해도 주문 버튼까지 스크롤 가능. */
+    touch-action: pan-y;
   }
 
   .right-panel-wrapper {
