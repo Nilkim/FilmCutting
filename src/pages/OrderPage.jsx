@@ -118,9 +118,10 @@ function OrderPage() {
 
   const handleShapeModalConfirm = ({ kind, params, pathData, width, height }) => {
     if (shapeModal?.editingId) {
+      // 편집: 위치·회전 보존, 치수/필렛만 교체
       setShapes((prev) => prev.map((s) =>
         s.id === shapeModal.editingId
-          ? { ...s, kind, params, pathData, width, height, rotation: params.rotation ?? 0 }
+          ? { ...s, kind, params, pathData, width, height }
           : s
       ));
     } else {
@@ -134,7 +135,7 @@ function OrderPage() {
         height,
         x: 610,
         y: 400,
-        rotation: params.rotation ?? 0,
+        rotation: 0,
         scaleX: 1,
         scaleY: 1,
       };

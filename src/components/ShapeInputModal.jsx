@@ -18,16 +18,15 @@ const KIND_LABELS = {
 };
 
 const DEFAULT_PARAMS = {
-  rect: { width: 100, height: 100, fillet: 0, rotation: 0 },
-  circle: { width: 100, height: 100, rotation: 0 },
-  triangle: { width: 100, height: 100, fillet: 0, rotation: 0 },
+  rect: { width: 100, height: 100, fillet: 0 },
+  circle: { width: 100, height: 100 },
+  triangle: { width: 100, height: 100, fillet: 0 },
   star: {
     width: 100,
     height: 100,
     points: 5,
     innerRatio: 0.5,
     fillet: 0,
-    rotation: 0,
   },
   bubble: {
     width: 120,
@@ -35,7 +34,6 @@ const DEFAULT_PARAMS = {
     tailDir: 'down',
     tailSize: 20,
     fillet: 8,
-    rotation: 0,
   },
 };
 
@@ -108,11 +106,9 @@ export default function ShapeInputModal({
       p.width = toNum(raw.width, 0);
       p.height = toNum(raw.height, 0);
       p.fillet = toNum(raw.fillet, 0);
-      p.rotation = toNum(raw.rotation, 0);
     } else if (kind === 'circle') {
       p.width = toNum(raw.width, 0);
       p.height = toNum(raw.height, 0);
-      p.rotation = toNum(raw.rotation, 0);
     } else if (kind === 'star') {
       p.width = toNum(raw.width, 0);
       p.height = toNum(raw.height, 0);
@@ -122,14 +118,12 @@ export default function ShapeInputModal({
         Math.min(0.95, toNum(raw.innerRatio, 0.5))
       );
       p.fillet = toNum(raw.fillet, 0);
-      p.rotation = toNum(raw.rotation, 0);
     } else if (kind === 'bubble') {
       p.width = toNum(raw.width, 0);
       p.height = toNum(raw.height, 0);
       p.tailDir = raw.tailDir || 'down';
       p.tailSize = toNum(raw.tailSize, 0);
       p.fillet = toNum(raw.fillet, 0);
-      p.rotation = toNum(raw.rotation, 0);
     }
     return p;
   }, [kind, raw]);
@@ -174,8 +168,6 @@ export default function ShapeInputModal({
     if (kind === 'bubble') {
       if (!(finalParams.tailSize > 0)) e.tailSize = '꼬리 크기는 0보다 커야 합니다';
     }
-    const rot = finalParams.rotation;
-    if (rot < -360 || rot > 360) e.rotation = '회전은 -360 ~ 360 사이여야 합니다';
     return e;
   }, [kind, finalParams]);
 
@@ -340,21 +332,6 @@ export default function ShapeInputModal({
               </div>
             )}
 
-            {/* Rotation (all kinds) */}
-            <div className="form-row">
-              <label>회전(°)</label>
-              <input
-                type="number"
-                min="-360"
-                max="360"
-                step="1"
-                value={raw.rotation}
-                onChange={(e) => setField('rotation', e.target.value)}
-              />
-              {errors.rotation && (
-                <div className="field-error">{errors.rotation}</div>
-              )}
-            </div>
           </div>
 
           <div className="shape-modal-preview">
@@ -369,15 +346,13 @@ export default function ShapeInputModal({
                   width="100%"
                   height="100%"
                 >
-                  <g transform={`rotate(${finalParams.rotation || 0})`}>
-                    <path
-                      d={generated.pathData}
-                      fill="#e0e7ff"
-                      stroke="#1e40af"
-                      strokeWidth="1"
-                      vectorEffect="non-scaling-stroke"
-                    />
-                  </g>
+                  <path
+                    d={generated.pathData}
+                    fill="#e0e7ff"
+                    stroke="#1e40af"
+                    strokeWidth="1"
+                    vectorEffect="non-scaling-stroke"
+                  />
                 </svg>
               ) : (
                 <div className="preview-empty">값을 입력해 주세요</div>

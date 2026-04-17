@@ -41,6 +41,11 @@ export function konvaShapeToPaperPath(shape) {
         case 'path':
             path = new paper.CompoundPath(shape.data);
             break;
+        case 'parametric':
+            // 파라메트릭 도형: shapeGenerators가 생성한 pathData 사용
+            // pathData는 이미 (0,0) 중심으로 정규화됨
+            path = new paper.CompoundPath(shape.pathData);
+            break;
         default:
             return null;
     }

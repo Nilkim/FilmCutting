@@ -1,5 +1,5 @@
 import React, { useRef, useEffect, useState } from 'react';
-import { Stage, Layer, Group, Rect, Circle, RegularPolygon, Star, Path, Line } from 'react-konva';
+import { Stage, Layer, Group, Rect, Circle, RegularPolygon, Star, Path, Line, Transformer } from 'react-konva';
 import './DrawingCanvas.css';
 
 // Physics scale: Let's assume 1mm = 1px for easy mapping.
@@ -48,12 +48,17 @@ const StrokeOverlay = ({ shapes }) => {
 
 // Shape Wrapper component: drag only, no resize/rotate handles.
 // Selection is shown via a thicker stroke (see `isSelected` below).
-const ShapeObject = ({ shapeProps, isSelected, onSelect, onChange, onDoubleClick, canvasScale, selectedFilm }) => {
+const ShapeObject = ({ shapeProps, isSelected, onSelect, onChange, onDoubleClick, canvasScale, selectedFilm, selectedNodeRef }) => {
     const shapeRef = useRef();
 
     const commonProps = {
         ...shapeProps,
-        ref: shapeRef,
+        ref: (node) => {
+            shapeRef.current = node;
+            if (isSelected && selectedNodeRef) {
+                selectedNodeRef.current = node;
+            }
+        },
         draggable: true,
         onClick: onSelect,
         onTap: onSelect,
@@ -70,6 +75,17 @@ const ShapeObject = ({ shapeProps, isSelected, onSelect, onChange, onDoubleClick
                 ...shapeProps,
                 x: e.target.x(),
                 y: e.target.y(),
+            });
+        },
+        onTransformEnd: (e) => {
+            const node = e.target;
+            const newRotation = node.rotation();
+            // Reset any accidental scale drift (resize is disabled, but be safe)
+            node.scaleX(shapeProps.scaleX || 1);
+            node.scaleY(shapeProps.scaleY || 1);
+            onChange({
+                ...shapeProps,
+                rotation: newRotation,
             });
         },
         // Apply stored scale explicitly (legacy shapes may have non-1 scale)
@@ -129,8 +145,29 @@ const ShapeObject = ({ shapeProps, isSelected, onSelect, onChange, onDoubleClick
 
 const DrawingCanvas = ({ selectedFilm, shapes, setShapes, activeShapeId, setActiveShapeId, maxLength, onEditShape, onDeleteShape }) => {
     const containerRef = useRef();
+    const trRef = useRef();
+    const selectedNodeRef = useRef(null);
     const [stageSize, setStageSize] = useState({ width: 0, height: 0 });
     const [scale, setScale] = useState(1);
+
+    // Clear stale selected node ref when selection clears
+    useEffect(() => {
+        if (!activeShapeId) {
+            selectedNodeRef.current = null;
+        }
+    }, [activeShapeId]);
+
+    // Attach Transformer to the currently selected shape's node
+    useEffect(() => {
+        if (!trRef.current) return;
+        if (activeShapeId && selectedNodeRef.current) {
+            trRef.current.nodes([selectedNodeRef.current]);
+            trRef.current.getLayer()?.batchDraw();
+        } else {
+            trRef.current.nodes([]);
+            trRef.current.getLayer()?.batchDraw();
+        }
+    }, [activeShapeId, shapes]);
 
     // Calculate the billable bound (rounded up to nearest 500)
     const billableLength = Math.max(500, Math.ceil(Math.max(maxLength, 0) / 500) * 500);
@@ -339,11 +376,23 @@ const DrawingCanvas = ({ selectedFilm, shapes, setShapes, activeShapeId, setActi
                                     onDoubleClick={() => handleDoubleClick(shape)}
                                     canvasScale={scale}
                                     selectedFilm={selectedFilm}
+                                    selectedNodeRef={selectedNodeRef}
                                 />
                             ))}
 
                             {/* Stroke Overlay (Draws lines of all shapes over top of all fills) */}
                             <StrokeOverlay shapes={shapes} />
+
+                            {/* Rotation-only Transformer */}
+                            <Transformer
+                                ref={trRef}
+                                resizeEnabled={false}
+                                rotateEnabled={true}
+                                rotationSnaps={[0, 45, 90, 135, 180, 225, 270, 315]}
+                                rotationSnapTolerance={5}
+                                borderEnabled={false}
+                                anchorSize={10}
+                            />
                         </Group>
                     </Layer>
                 </Stage>
