@@ -11,6 +11,11 @@ truncate table public.orders;
 -- 2) 일련번호 카운터 초기화 (새 포맷으로 다시 001부터 시작)
 truncate table public.order_daily_seq;
 
--- 3) (선택) Storage 'dxf-files' 버킷의 모든 DXF 파일 삭제
---    주문과 함께 업로드된 DXF를 날리고 싶으면 아래 쿼리도 실행
-delete from storage.objects where bucket_id = 'dxf-files';
+-- 3) (선택) Storage 'dxf-files' 버킷의 DXF 파일 삭제
+--    Supabase는 SQL로 storage.objects 직접 DELETE를 차단함.
+--    대시보드 UI에서 수동 삭제:
+--      Supabase Dashboard → Storage → dxf-files → Select all → Delete
+--    또는 Supabase JS Storage API 사용:
+--      const { data } = await supabase.storage.from('dxf-files').list();
+--      const paths = data.map(o => o.name);
+--      await supabase.storage.from('dxf-files').remove(paths);
