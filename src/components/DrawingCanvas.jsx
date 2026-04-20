@@ -11,6 +11,9 @@ const GRID_INTERVAL = 500;
 // Speech bubble path (approximate) — legacy
 const SpeechBubblePath = "M0 0 H 100 V 70 H 20 L 0 100 L 0 70 V 0 Z";
 
+// 회전 아이콘 (↻) SVG을 HTMLImageElement로 — Transformer rotater anchor의 패턴 fill용
+const ROTATE_ICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7"/><polyline points="21 4 21 12 13 12"/></svg>`;
+
 // Render strokes on top of all fills so overlapping lines are never hidden
 const StrokeOverlay = ({ shapes }) => {
     return (
@@ -147,6 +150,22 @@ const DrawingCanvas = ({ selectedFilm, shapes, setShapes, activeShapeId, setActi
     const containerRef = useRef();
     const trRef = useRef();
     const selectedNodeRef = useRef(null);
+    const [rotateIcon, setRotateIcon] = useState(null);
+
+    // 회전 아이콘 이미지 로드
+    useEffect(() => {
+        const img = new window.Image();
+        img.onload = () => setRotateIcon(img);
+        img.src = 'data:image/svg+xml;base64,' + btoa(ROTATE_ICON_SVG);
+    }, []);
+
+    // 아이콘 로드 후 transformer 다시 그리기
+    useEffect(() => {
+        if (rotateIcon && trRef.current) {
+            trRef.current.forceUpdate();
+            trRef.current.getLayer()?.batchDraw();
+        }
+    }, [rotateIcon]);
     const [stageSize, setStageSize] = useState({ width: 0, height: 0 });
     const [scale, setScale] = useState(1);
 
@@ -391,7 +410,32 @@ const DrawingCanvas = ({ selectedFilm, shapes, setShapes, activeShapeId, setActi
                                 rotationSnaps={[0, 45, 90, 135, 180, 225, 270, 315]}
                                 rotationSnapTolerance={5}
                                 borderEnabled={false}
-                                anchorSize={10}
+                                rotateAnchorOffset={40}
+                                rotateAnchorCursor="grab"
+                                anchorStyleFunc={(anchor) => {
+                                    if (anchor.hasName('rotater')) {
+                                        const SIZE = 28;
+                                        anchor.cornerRadius(SIZE / 2);
+                                        anchor.fill('#2563eb');
+                                        anchor.stroke('#ffffff');
+                                        anchor.strokeWidth(3);
+                                        anchor.width(SIZE);
+                                        anchor.height(SIZE);
+                                        anchor.offsetX(SIZE / 2);
+                                        anchor.offsetY(SIZE / 2);
+                                        anchor.shadowColor('#000');
+                                        anchor.shadowBlur(6);
+                                        anchor.shadowOpacity(0.3);
+                                        anchor.shadowOffsetY(2);
+                                        if (rotateIcon) {
+                                            anchor.fillPriority('pattern');
+                                            anchor.fillPatternImage(rotateIcon);
+                                            anchor.fillPatternRepeat('no-repeat');
+                                            // SVG viewBox 24x24 → anchor 28x28 중앙 정렬 (아이콘은 그대로, 안쪽 2px 여유)
+                                            anchor.fillPatternOffset({ x: -2, y: -2 });
+                                        }
+                                    }
+                                }}
                             />
                         </Group>
                     </Layer>
