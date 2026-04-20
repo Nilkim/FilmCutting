@@ -391,25 +391,7 @@ const DrawingCanvas = ({ selectedFilm, shapes, setShapes, activeShapeId, setActi
                                 rotationSnaps={[0, 45, 90, 135, 180, 225, 270, 315]}
                                 rotationSnapTolerance={5}
                                 borderEnabled={false}
-                                rotateAnchorOffset={40}
-                                rotateAnchorCursor="grab"
-                                anchorStyleFunc={(anchor) => {
-                                    if (anchor.hasName('rotater')) {
-                                        const SIZE = 28;
-                                        anchor.cornerRadius(SIZE / 2);
-                                        anchor.fill('#2563eb');
-                                        anchor.stroke('#ffffff');
-                                        anchor.strokeWidth(3);
-                                        anchor.width(SIZE);
-                                        anchor.height(SIZE);
-                                        anchor.offsetX(SIZE / 2);
-                                        anchor.offsetY(SIZE / 2);
-                                        anchor.shadowColor('#000');
-                                        anchor.shadowBlur(6);
-                                        anchor.shadowOpacity(0.3);
-                                        anchor.shadowOffsetY(2);
-                                    }
-                                }}
+                                anchorSize={10}
                             />
                         </Group>
                     </Layer>
