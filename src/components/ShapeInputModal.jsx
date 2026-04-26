@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   clampFillet,
   generateRectPath,
@@ -6,8 +6,51 @@ import {
   generateTrianglePath,
   generateStarPath,
   generateBubblePath,
+  generateTextPath,
 } from '../utils/shapeGenerators';
+import { loadFont, findMissingGlyphs } from '../utils/fontLoader';
 import './ShapeInputModal.css';
+
+// IME-safe text input. Uses uncontrolled DOM during composition (defaultValue
+// + useEffect sync) so the Korean IME buffer is never clobbered by React's
+// controlled-input reconciliation mid-composition. Committed value is pushed
+// up via onChange on input (non-composing) or on compositionend.
+function CompositionSafeInput({ value, onChange, ...rest }) {
+  const ref = useRef(null);
+  const composingRef = useRef(false);
+
+  // Sync DOM to external `value` only when not composing. This lets parents
+  // still "set" the value programmatically (e.g. re-opening in edit mode).
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    if (composingRef.current) return;
+    const v = value ?? '';
+    if (el.value !== v) el.value = v;
+  }, [value]);
+
+  return (
+    <input
+      ref={ref}
+      defaultValue={value ?? ''}
+      autoComplete="off"
+      autoCorrect="off"
+      spellCheck={false}
+      onCompositionStart={() => {
+        composingRef.current = true;
+      }}
+      onCompositionEnd={(e) => {
+        composingRef.current = false;
+        onChange(e.target.value);
+      }}
+      onInput={(e) => {
+        if (composingRef.current) return;
+        onChange(e.target.value);
+      }}
+      {...rest}
+    />
+  );
+}
 
 const KIND_LABELS = {
   rect: '사각형',
@@ -15,6 +58,7 @@ const KIND_LABELS = {
   triangle: '삼각형',
   star: '별',
   bubble: '말풍선',
+  text: '텍스트',
 };
 
 const DEFAULT_PARAMS = {
@@ -35,22 +79,27 @@ const DEFAULT_PARAMS = {
     tailSize: 20,
     fillet: 8,
   },
+  text: { text: '텍스트', size: 30, weight: 'regular' },
 };
 
+// Non-text kinds are synchronous — wrap them so every generator returns a
+// Promise and the effect below can treat them uniformly.
 function generateForKind(kind, params) {
   switch (kind) {
     case 'rect':
-      return generateRectPath(params);
+      return Promise.resolve(generateRectPath(params));
     case 'circle':
-      return generateCirclePath(params);
+      return Promise.resolve(generateCirclePath(params));
     case 'triangle':
-      return generateTrianglePath(params);
+      return Promise.resolve(generateTrianglePath(params));
     case 'star':
-      return generateStarPath(params);
+      return Promise.resolve(generateStarPath(params));
     case 'bubble':
-      return generateBubblePath(params);
+      return Promise.resolve(generateBubblePath(params));
+    case 'text':
+      return generateTextPath(params);
     default:
-      throw new Error(`Unknown shape kind: ${kind}`);
+      return Promise.reject(new Error(`Unknown shape kind: ${kind}`));
   }
 }
 
@@ -67,8 +116,10 @@ export default function ShapeInputModal({
   initialParams,
   onConfirm,
   onCancel,
+  mode = 'modal', // 'modal' (mobile, full overlay) | 'panel' (PC, inline)
 }) {
   const isEdit = !!initialParams;
+  const isPanel = mode === 'panel';
   const defaults = DEFAULT_PARAMS[kind] || {};
 
   // Keep raw string values in state for number inputs so typing "12." works.
@@ -76,11 +127,16 @@ export default function ShapeInputModal({
     const src = initialParams || defaults;
     const out = {};
     Object.keys(defaults).forEach((k) => {
-      out[k] = src[k] !== undefined ? String(src[k]) : String(defaults[k]);
+      const v = src[k] !== undefined ? src[k] : defaults[k];
+      // Keep strings as strings; numbers stringified for number inputs
+      out[k] = typeof v === 'number' ? String(v) : v;
     });
-    // non-numeric fields (bubble.tailDir) retained as-is
     if (kind === 'bubble') {
       out.tailDir = (src.tailDir ?? defaults.tailDir) || 'down';
+    }
+    if (kind === 'text') {
+      out.text = src.text ?? defaults.text;
+      out.weight = src.weight ?? defaults.weight;
     }
     return out;
   });
@@ -124,11 +180,15 @@ export default function ShapeInputModal({
       p.tailDir = raw.tailDir || 'down';
       p.tailSize = toNum(raw.tailSize, 0);
       p.fillet = toNum(raw.fillet, 0);
+    } else if (kind === 'text') {
+      p.text = String(raw.text ?? '');
+      p.size = toNum(raw.size, 0);
+      p.weight = raw.weight === 'bold' ? 'bold' : 'regular';
     }
     return p;
   }, [kind, raw]);
 
-  // Clamp fillet automatically
+  // Clamp fillet automatically (only meaningful for kinds that have it)
   const maxFillet = useMemo(() => {
     const w = parsed.width || 0;
     const h = parsed.height || 0;
@@ -156,8 +216,10 @@ export default function ShapeInputModal({
       const v = finalParams[field];
       if (!(v > 0)) e[field] = `${label}은(는) 0보다 커야 합니다`;
     };
-    needsPositive('width', '폭');
-    needsPositive('height', '높이');
+    if (kind !== 'text') {
+      needsPositive('width', '폭');
+      needsPositive('height', '높이');
+    }
     if (kind === 'star') {
       const p = finalParams.points;
       if (!(p >= 3 && p <= 12)) e.points = '꼭짓점 수는 3~12 사이여야 합니다';
@@ -168,21 +230,72 @@ export default function ShapeInputModal({
     if (kind === 'bubble') {
       if (!(finalParams.tailSize > 0)) e.tailSize = '꼬리 크기는 0보다 커야 합니다';
     }
+    if (kind === 'text') {
+      if (!finalParams.text || !finalParams.text.trim()) e.text = '텍스트를 입력해 주세요';
+      if (!(finalParams.size > 0)) e.size = '글자 크기는 0보다 커야 합니다';
+    }
     return e;
   }, [kind, finalParams]);
 
-  // Generate path
-  const [generated, genError] = useMemo(() => {
-    if (Object.keys(errors).length > 0) return [null, null];
-    try {
-      const g = generateForKind(kind, finalParams);
-      return [g, null];
-    } catch (err) {
-      return [null, err];
+  // Async-aware generation.
+  // For non-text shapes the Promise resolves in the same microtask so no
+  // flash of loading state. For text we may briefly wait on the font fetch.
+  const [generated, setGenerated] = useState(null);
+  const [genError, setGenError] = useState(null);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const latestRequestRef = useRef(0);
+
+  useEffect(() => {
+    if (Object.keys(errors).length > 0) {
+      setGenerated(null);
+      setGenError(null);
+      setIsGenerating(false);
+      return;
     }
+    const requestId = ++latestRequestRef.current;
+    setIsGenerating(kind === 'text'); // only text can actually be slow
+    generateForKind(kind, finalParams)
+      .then((g) => {
+        if (latestRequestRef.current !== requestId) return; // stale
+        setGenerated(g);
+        setGenError(null);
+        setIsGenerating(false);
+      })
+      .catch((err) => {
+        if (latestRequestRef.current !== requestId) return;
+        setGenerated(null);
+        setGenError(err);
+        setIsGenerating(false);
+      });
   }, [kind, finalParams, errors]);
 
-  const canConfirm = !genError && generated && Object.keys(errors).length === 0;
+  // Missing-glyph detection for text (only runs when text is non-empty).
+  const [missingGlyphs, setMissingGlyphs] = useState([]);
+  useEffect(() => {
+    if (kind !== 'text' || !finalParams.text || !finalParams.text.trim()) {
+      setMissingGlyphs([]);
+      return;
+    }
+    let cancelled = false;
+    loadFont(finalParams.weight)
+      .then((font) => {
+        if (cancelled) return;
+        setMissingGlyphs(findMissingGlyphs(font, finalParams.text));
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setMissingGlyphs([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [kind, finalParams.text, finalParams.weight]);
+
+  const canConfirm =
+    !genError &&
+    generated &&
+    !isGenerating &&
+    Object.keys(errors).length === 0;
 
   const handleConfirm = () => {
     if (!canConfirm) return;
@@ -196,8 +309,6 @@ export default function ShapeInputModal({
   };
 
   // --- Preview SVG viewBox ---
-  // Generator returns bounds-accurate width/height (e.g. bubble includes tail).
-  // We fit preview around those, centered at (0,0), plus padding for stroke.
   const pad = 10;
   const vbW = generated ? generated.width + pad * 2 : 100;
   const vbH = generated ? generated.height + pad * 2 : 100;
@@ -208,44 +319,91 @@ export default function ShapeInputModal({
     ? '도형 수정'
     : `도형 추가 - ${KIND_LABELS[kind] || ''}`;
 
-  // Prevent backdrop click from closing (per AdminFilmsPage pattern).
   const stopProp = (e) => e.stopPropagation();
 
-  return (
-    <div className="shape-modal-backdrop">
-      <div className="shape-modal" onClick={stopProp}>
-        <div className="shape-modal-header">
-          <h2>{header}</h2>
-        </div>
+  // ---- Body composition ----
+  // Form fields are identical between modal and panel modes; the wrapper
+  // element + preview visibility differ. By assembling Form/Preview/Footer
+  // pieces here we avoid duplicating the per-kind input switch.
+  const formFields = (
+    <div className="shape-modal-form">
+            {/* Text-only fields */}
+            {kind === 'text' && (
+              <>
+                <div className="form-row">
+                  <label>텍스트</label>
+                  <CompositionSafeInput
+                    type="text"
+                    value={raw.text}
+                    onChange={(v) => setField('text', v)}
+                    maxLength={60}
+                    placeholder="입력할 글자"
+                  />
+                  {errors.text && <div className="field-error">{errors.text}</div>}
+                </div>
+                <div className="form-row">
+                  <label>글자 크기(mm)</label>
+                  <input
+                    type="number"
+                    min="1"
+                    step="1"
+                    value={raw.size}
+                    onChange={(e) => setField('size', e.target.value)}
+                  />
+                  {errors.size && <div className="field-error">{errors.size}</div>}
+                </div>
+                <div className="form-row">
+                  <label>굵기</label>
+                  <select
+                    value={raw.weight}
+                    onChange={(e) => setField('weight', e.target.value)}
+                  >
+                    <option value="regular">보통 (Regular)</option>
+                    <option value="bold">굵게 (Bold)</option>
+                  </select>
+                </div>
+                {missingGlyphs.length > 0 && (
+                  <div className="field-warning">
+                    ⚠ 이 폰트에 없는 글자: {missingGlyphs.join(' ')}
+                    <div className="field-hint">
+                      해당 글자는 빈 사각형으로 커팅될 수 있어요. 다른 글자로
+                      바꾸거나 빼 주세요.
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
 
-        <div className="shape-modal-body">
-          <div className="shape-modal-form">
-            {/* Width / Height (all kinds) */}
-            <div className="form-row">
-              <label>폭(mm)</label>
-              <input
-                type="number"
-                min="0"
-                step="1"
-                value={raw.width}
-                onChange={(e) => setField('width', e.target.value)}
-              />
-              {errors.width && <div className="field-error">{errors.width}</div>}
-            </div>
+            {/* Width / Height (non-text kinds) */}
+            {kind !== 'text' && (
+              <>
+                <div className="form-row">
+                  <label>폭(mm)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="1"
+                    value={raw.width}
+                    onChange={(e) => setField('width', e.target.value)}
+                  />
+                  {errors.width && <div className="field-error">{errors.width}</div>}
+                </div>
 
-            <div className="form-row">
-              <label>높이(mm)</label>
-              <input
-                type="number"
-                min="0"
-                step="1"
-                value={raw.height}
-                onChange={(e) => setField('height', e.target.value)}
-              />
-              {errors.height && (
-                <div className="field-error">{errors.height}</div>
-              )}
-            </div>
+                <div className="form-row">
+                  <label>높이(mm)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="1"
+                    value={raw.height}
+                    onChange={(e) => setField('height', e.target.value)}
+                  />
+                  {errors.height && (
+                    <div className="field-error">{errors.height}</div>
+                  )}
+                </div>
+              </>
+            )}
 
             {/* Star-only: points + innerRatio */}
             {kind === 'star' && (
@@ -312,8 +470,8 @@ export default function ShapeInputModal({
               </>
             )}
 
-            {/* Fillet (all except circle) */}
-            {kind !== 'circle' && (
+            {/* Fillet (all except circle and text) */}
+            {kind !== 'circle' && kind !== 'text' && (
               <div className="form-row">
                 <label>필렛(mm)</label>
                 <input
@@ -332,54 +490,96 @@ export default function ShapeInputModal({
               </div>
             )}
 
-          </div>
+    </div>
+  );
 
-          <div className="shape-modal-preview">
-            <div className="preview-title">미리보기</div>
-            <div className="preview-box">
-              {genError ? (
-                <div className="preview-error">도형 생성 실패</div>
-              ) : generated ? (
-                <svg
-                  viewBox={`${vbX} ${vbY} ${vbW} ${vbH}`}
-                  preserveAspectRatio="xMidYMid meet"
-                  width="100%"
-                  height="100%"
-                >
-                  <path
-                    d={generated.pathData}
-                    fill="#e0e7ff"
-                    stroke="#1e40af"
-                    strokeWidth="1"
-                    vectorEffect="non-scaling-stroke"
-                  />
-                </svg>
-              ) : (
-                <div className="preview-empty">값을 입력해 주세요</div>
-              )}
-            </div>
-            {generated && (
-              <div className="preview-dims">
-                실제 크기: {generated.width.toFixed(1)} ×{' '}
-                {generated.height.toFixed(1)} mm
-              </div>
-            )}
-          </div>
+  const previewBlock = (
+    <div className="shape-modal-preview">
+      <div className="preview-title">미리보기</div>
+      <div className="preview-box">
+        {isGenerating ? (
+          <div className="preview-empty">폰트 불러오는 중...</div>
+        ) : genError ? (
+          <div className="preview-error">도형 생성 실패</div>
+        ) : generated ? (
+          <svg
+            viewBox={`${vbX} ${vbY} ${vbW} ${vbH}`}
+            preserveAspectRatio="xMidYMid meet"
+            width="100%"
+            height="100%"
+          >
+            <path
+              d={generated.pathData}
+              fill="#e0e7ff"
+              fillRule="evenodd"
+              stroke="#1e40af"
+              strokeWidth="1"
+              vectorEffect="non-scaling-stroke"
+            />
+          </svg>
+        ) : (
+          <div className="preview-empty">값을 입력해 주세요</div>
+        )}
+      </div>
+      {generated && (
+        <div className="preview-dims">
+          실제 크기: {generated.width.toFixed(1)} ×{' '}
+          {generated.height.toFixed(1)} mm
         </div>
+      )}
+    </div>
+  );
 
-        <div className="shape-modal-footer">
-          <button type="button" className="btn-secondary" onClick={onCancel}>
-            취소
-          </button>
+  const footer = (
+    <div className="shape-modal-footer">
+      <button type="button" className="btn-secondary" onClick={onCancel}>
+        취소
+      </button>
+      <button
+        type="button"
+        className="btn-primary"
+        onClick={handleConfirm}
+        disabled={!canConfirm}
+      >
+        확인
+      </button>
+    </div>
+  );
+
+  // ---- Panel mode (PC, embedded in right column) ----
+  // No backdrop, no preview SVG (canvas shows live), narrower layout.
+  if (isPanel) {
+    return (
+      <div className="shape-panel">
+        <div className="shape-panel-header">
+          <h3>{header}</h3>
           <button
             type="button"
-            className="btn-primary"
-            onClick={handleConfirm}
-            disabled={!canConfirm}
+            className="shape-panel-close"
+            onClick={onCancel}
+            aria-label="닫기"
           >
-            확인
+            ✕
           </button>
         </div>
+        <div className="shape-panel-body">{formFields}</div>
+        {footer}
+      </div>
+    );
+  }
+
+  // ---- Modal mode (mobile/legacy) ----
+  return (
+    <div className="shape-modal-backdrop">
+      <div className="shape-modal" onClick={stopProp}>
+        <div className="shape-modal-header">
+          <h2>{header}</h2>
+        </div>
+        <div className="shape-modal-body">
+          {formFields}
+          {previewBlock}
+        </div>
+        {footer}
       </div>
     </div>
   );

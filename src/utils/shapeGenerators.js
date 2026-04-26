@@ -18,6 +18,7 @@
 
 import paper from 'paper';
 import makerjs from 'makerjs';
+import { loadFont } from './fontLoader.js';
 
 // ------------------------------------------------------------------
 // Paper.js headless setup (reuses global project if already initialized
@@ -225,12 +226,16 @@ export function generateStarPath({
 }
 
 // ------------------------------------------------------------------
-// Speech Bubble (rounded rect + triangular tail on one side)
+// Speech Bubble (rounded rect + triangular tail at any 0–360° angle)
 // ------------------------------------------------------------------
+// `tailAngle` uses the same convention as the rotation handle:
+//   0° = up (12 o'clock), 90° = right, 180° = down, 270° = left.
+// The tail tip sits OUTSIDE the rectangle along that direction; the base
+// of the tail lies on whichever rectangle edge the angle ray hits.
 export function generateBubblePath({
     width,
     height,
-    tailDir = 'down',
+    tailAngle = 180,
     tailSize = 20,
     fillet = 0
 }) {
@@ -239,66 +244,165 @@ export function generateBubblePath({
     const h = Math.abs(height);
     const ts = Math.max(0, Number(tailSize) || 0);
 
-    // Build the body vertex list walking around the rectangle clockwise.
-    // At the chosen side's center we inject three tail points:
-    //   base-left, tip, base-right. The tail extends OUTSIDE the
-    //   rectangle, so the total bounding box grows in the tail direction.
-    //
-    // Tail base width along the side:
-    const baseHalf = Math.min(ts, (tailDir === 'up' || tailDir === 'down' ? w : h) / 2 - 1);
-    const tipOffset = ts; // distance from side to tail tip
+    // Normalize angle to [0, 360) and convert to radians.
+    const angleDeg = ((Number(tailAngle) || 0) % 360 + 360) % 360;
+    const angleRad = (angleDeg * Math.PI) / 180;
+
+    // Direction vector with our convention: 0°=up, clockwise.
+    const dx = Math.sin(angleRad);
+    const dy = -Math.cos(angleRad);
 
     const L = -w / 2;
     const R = w / 2;
     const T = -h / 2;
     const B = h / 2;
 
-    // Rectangle corners (TL, TR, BR, BL), clockwise.
+    // Ray-rectangle intersection from origin in direction (dx, dy).
+    // Pick the smallest positive t among the four edges where the ray exits.
+    let t = Infinity;
+    let edge = 'bottom'; // fallback for degenerate angles
+    if (dy < -1e-9) {
+        const tc = T / dy;
+        if (tc > 0 && tc < t) { t = tc; edge = 'top'; }
+    }
+    if (dy > 1e-9) {
+        const tc = B / dy;
+        if (tc > 0 && tc < t) { t = tc; edge = 'bottom'; }
+    }
+    if (dx > 1e-9) {
+        const tc = R / dx;
+        if (tc > 0 && tc < t) { t = tc; edge = 'right'; }
+    }
+    if (dx < -1e-9) {
+        const tc = L / dx;
+        if (tc > 0 && tc < t) { t = tc; edge = 'left'; }
+    }
+
+    const intersectX = t * dx;
+    const intersectY = t * dy;
+    const tipX = intersectX + dx * ts;
+    const tipY = intersectY + dy * ts;
+
+    // Tail base half-width along whichever edge it sits on, clamped so it
+    // never reaches a corner (-1 px gap keeps fillet math well-defined).
+    const edgeLen = (edge === 'top' || edge === 'bottom') ? w : h;
+    const baseHalf = Math.min(ts, edgeLen / 2 - 1);
+
+    // Two base points on the edge, ordered to match the clockwise walk
+    // around the rectangle (so insertion order base1 → tip → base2 is correct).
+    let base1, base2;
+    switch (edge) {
+        case 'top':    // walking TL→TR (x increasing)
+            base1 = { x: intersectX - baseHalf, y: T };
+            base2 = { x: intersectX + baseHalf, y: T };
+            break;
+        case 'right':  // walking TR→BR (y increasing)
+            base1 = { x: R, y: intersectY - baseHalf };
+            base2 = { x: R, y: intersectY + baseHalf };
+            break;
+        case 'bottom': // walking BR→BL (x decreasing)
+            base1 = { x: intersectX + baseHalf, y: B };
+            base2 = { x: intersectX - baseHalf, y: B };
+            break;
+        case 'left':   // walking BL→TL (y decreasing)
+            base1 = { x: L, y: intersectY + baseHalf };
+            base2 = { x: L, y: intersectY - baseHalf };
+            break;
+    }
+
     const corners = [
         { x: L, y: T }, // TL
         { x: R, y: T }, // TR
         { x: R, y: B }, // BR
         { x: L, y: B }  // BL
     ];
-
-    // Which edge to inject tail on: index 0=top (TL->TR), 1=right (TR->BR),
-    // 2=bottom (BR->BL), 3=left (BL->TL).
-    const edgeIndex = { up: 0, right: 1, down: 2, left: 3 }[tailDir] ?? 2;
+    const edgeIndex = { top: 0, right: 1, bottom: 2, left: 3 }[edge];
 
     const vertices = [];
     for (let i = 0; i < 4; i++) {
         vertices.push(corners[i]);
         if (i === edgeIndex) {
-            // Inject tail along this edge (from corners[i] toward corners[(i+1)%4]).
-            if (edgeIndex === 0) {
-                // top edge, going L->R, tail points upward (y negative).
-                vertices.push({ x: -baseHalf, y: T });
-                vertices.push({ x: 0, y: T - tipOffset });
-                vertices.push({ x: baseHalf, y: T });
-            } else if (edgeIndex === 1) {
-                // right edge, going T->B, tail points right.
-                vertices.push({ x: R, y: -baseHalf });
-                vertices.push({ x: R + tipOffset, y: 0 });
-                vertices.push({ x: R, y: baseHalf });
-            } else if (edgeIndex === 2) {
-                // bottom edge, going R->L, tail points down.
-                vertices.push({ x: baseHalf, y: B });
-                vertices.push({ x: 0, y: B + tipOffset });
-                vertices.push({ x: -baseHalf, y: B });
-            } else if (edgeIndex === 3) {
-                // left edge, going B->T, tail points left.
-                vertices.push({ x: L, y: baseHalf });
-                vertices.push({ x: L - tipOffset, y: 0 });
-                vertices.push({ x: L, y: -baseHalf });
-            }
+            vertices.push(base1);
+            vertices.push({ x: tipX, y: tipY });
+            vertices.push(base2);
         }
     }
 
-    // Fillet only the rectangle corners, NOT the tail tip/base (those must
-    // stay sharp for a proper pointy bubble tail). We do this by building
-    // the polygon manually and only rounding the four original corners.
+    // Fillet only the rectangle corners, NOT the tail tip/base (sharp tail).
     const r = clampFillet(fillet, w, h);
     const path = buildBubblePath(vertices, corners, r);
+    return finalizePath(path);
+}
+
+// ------------------------------------------------------------------
+// Arch (rectangle body + arc top — like an architectural niche/door)
+// ------------------------------------------------------------------
+// Parameters:
+//   width, height     — overall bounding box
+//   archHeight        — height of the arc portion at top
+//                       (= width/2 → perfect semicircle; > width/2 → tall
+//                       elliptical; < width/2 → shallow)
+//   fillet            — applied ONLY to the bottom two corners (top is
+//                       already smooth). Clamped by body height so the
+//                       fillet can't eat into the arch.
+export function generateArchPath({ width, height, archHeight = 0, fillet = 0 }) {
+    ensurePaperSetup();
+    const w = Math.abs(width);
+    const h = Math.abs(height);
+    const ah = Math.max(0, Math.min(h, Number(archHeight) || 0));
+
+    // No arch portion → fall back to plain rounded rectangle.
+    if (ah <= 0) {
+        return generateRectPath({ width: w, height: h, fillet });
+    }
+
+    const bodyH = h - ah;
+    const r = Math.max(0, Math.min(Number(fillet) || 0, w / 2, bodyH));
+
+    const L = -w / 2;
+    const R = w / 2;
+    const T = -h / 2;
+    const B = h / 2;
+    const archStartY = T + ah;
+
+    const path = new paper.Path({ insert: false });
+
+    // Build clockwise from a stable starting vertex. The bottom edge gets
+    // optional fillet at its two corners; the top is a single arcTo through
+    // the apex (0, T).
+    if (r > 0) {
+        path.moveTo(new paper.Point(L + r, B));
+        path.lineTo(new paper.Point(R - r, B));
+        // Bottom-right fillet (quadratic via cubic conversion)
+        path.cubicCurveTo(
+            new paper.Point(R - r + (2 / 3) * r, B),
+            new paper.Point(R, B - r + (2 / 3) * r),
+            new paper.Point(R, B - r)
+        );
+        path.lineTo(new paper.Point(R, archStartY));
+        path.arcTo(
+            new paper.Point(0, T),
+            new paper.Point(L, archStartY)
+        );
+        path.lineTo(new paper.Point(L, B - r));
+        // Bottom-left fillet
+        path.cubicCurveTo(
+            new paper.Point(L, B - r + (2 / 3) * r),
+            new paper.Point(L + r - (2 / 3) * r, B),
+            new paper.Point(L + r, B)
+        );
+    } else {
+        path.moveTo(new paper.Point(L, B));
+        path.lineTo(new paper.Point(R, B));
+        path.lineTo(new paper.Point(R, archStartY));
+        path.arcTo(
+            new paper.Point(0, T),
+            new paper.Point(L, archStartY)
+        );
+        path.lineTo(new paper.Point(L, B));
+    }
+
+    path.closePath();
     return finalizePath(path);
 }
 
@@ -361,6 +465,56 @@ function buildBubblePath(vertices, corners, radius) {
     }
     path.closePath();
     return path;
+}
+
+// ------------------------------------------------------------------
+// Text (vector outline of string, using opentype.js + makerjs)
+// ------------------------------------------------------------------
+// NOTE: Async — unlike other generators, this waits for the font file to
+// lazy-load. Consumers must `await` the returned Promise.
+//
+// `size` is the em size in mm. Actual bounding-box height ends up roughly
+// equal to `size` for Latin caps; Hangul tends to be slightly taller due to
+// accent/jongseong metrics. The returned width/height reflects the true
+// bounds after flattening.
+//
+// `fontId` selects from curated fonts or user-uploaded ones (IndexedDB).
+// `weight` is only meaningful for curated fonts that ship multiple weights;
+// custom uploaded fonts ignore it (single file per upload).
+export async function generateTextPath({
+    text,
+    size = 30,
+    fontId,
+    weight = 'regular',
+}) {
+    const str = String(text ?? '');
+    if (!str.trim()) throw new Error('텍스트가 비어있습니다');
+
+    ensurePaperSetup();
+    const font = await loadFont(fontId, weight);
+
+    // makerjs.models.Text signature:
+    //   Text(font, text, fontSize, combine?, centerCharacterOrigin?, bezierAccuracy?)
+    // We keep combine=false so each glyph stays independent (lets Paper.js
+    // render compound paths with even-odd fill for holes like ㅇ, o, A, B).
+    const textModel = new makerjs.models.Text(font, str, size, false, false);
+
+    const svgPathData = makerjs.exporter.toSVGPathData(textModel, {
+        byLayers: false,
+        fillRule: 'evenodd',
+        origin: [0, 0],
+    });
+    const d = typeof svgPathData === 'string'
+        ? svgPathData
+        : Object.values(svgPathData).join(' ');
+
+    // `makerjs.exporter.toSVGPathData` already flips Y internally so the
+    // pathData is in SVG-standard (Y-down) coords — same as the other
+    // generators above. Do NOT apply an additional scale(1,-1) here or the
+    // glyphs will render upside-down.
+    const paperPath = new paper.CompoundPath({ pathData: d, insert: false });
+
+    return finalizePath(paperPath);
 }
 
 /*

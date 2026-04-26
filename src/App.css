@@ -204,6 +204,16 @@
   flex-direction: column;
   z-index: 5;
   box-shadow: -2px 0 10px rgba(0, 0, 0, 0.02);
+  overflow-y: auto;
+}
+
+/* Inline editor docked under the price panel on PC. Stays clear of the
+   stepper/header area; scrolls within right-panel-wrapper if too tall. */
+.right-side-edit-area {
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }
 
 .price-sheet-toggle {

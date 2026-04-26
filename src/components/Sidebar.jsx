@@ -1,5 +1,21 @@
 import React from 'react';
-import { Square, Circle, Triangle, Star, MessageSquare, Combine, Scissors, Upload, Film } from 'lucide-react';
+import { Square, Circle, Triangle, Star, MessageSquare, Type, Combine, Scissors, Upload, Film } from 'lucide-react';
+
+// Inline arch icon — lucide doesn't ship one. Z closes the bottom edge.
+const ArchIcon = ({ size = 24 }) => (
+    <svg
+        width={size}
+        height={size}
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+    >
+        <path d="M4 21 L4 11 A8 8 0 0 1 20 11 L20 21 Z" />
+    </svg>
+);
 import './Sidebar.css';
 
 const TOOLS = [
@@ -8,6 +24,8 @@ const TOOLS = [
     { id: 'triangle', label: '삼각형', icon: <Triangle size={24} /> },
     { id: 'star', label: '별표', icon: <Star size={24} /> },
     { id: 'bubble', label: '말풍선', icon: <MessageSquare size={24} /> },
+    { id: 'arch', label: '아치', icon: <ArchIcon size={24} /> },
+    { id: 'text', label: '텍스트', icon: <Type size={24} /> },
 ];
 
 const FilmSection = ({ selectedFilm, onOpenFilmSelector }) => (

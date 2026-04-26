@@ -1,0 +1,59 @@
+/* ShapeDimensionsPanel.css — Side panel for editing selected shape dims */
+
+.dim-panel {
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    padding: 14px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    box-shadow: 0 4px 16px rgba(15, 23, 42, 0.06);
+}
+
+.dim-panel-title {
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: #0f172a;
+    border-bottom: 1px solid #e2e8f0;
+    padding-bottom: 8px;
+    margin-bottom: 4px;
+}
+
+.dim-row {
+    display: grid;
+    grid-template-columns: 90px 1fr;
+    align-items: center;
+    gap: 10px;
+}
+
+.dim-row label {
+    font-size: 0.85rem;
+    color: #334155;
+    font-weight: 500;
+}
+
+.dim-row input {
+    padding: 7px 10px;
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    font-size: 0.95rem;
+    background: #ffffff;
+    color: #0f172a;
+    outline: none;
+    transition: border-color 0.15s ease;
+    min-width: 0;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.dim-row input:focus {
+    border-color: #2563eb;
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+}
+
+.dim-panel-hint {
+    font-size: 0.78rem;
+    color: #64748b;
+    line-height: 1.4;
+}

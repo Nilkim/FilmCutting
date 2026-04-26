@@ -1,5 +1,5 @@
 import React, { useRef, useEffect, useState } from 'react';
-import { Stage, Layer, Group, Rect, Circle, RegularPolygon, Star, Path, Line, Transformer } from 'react-konva';
+import { Stage, Layer, Group, Rect, Circle, RegularPolygon, Star, Path, Line, Text, Transformer } from 'react-konva';
 import './DrawingCanvas.css';
 
 // Physics scale: Let's assume 1mm = 1px for easy mapping.
@@ -11,11 +11,77 @@ const GRID_INTERVAL = 500;
 // Speech bubble path (approximate) — legacy
 const SpeechBubblePath = "M0 0 H 100 V 70 H 20 L 0 100 L 0 70 V 0 Z";
 
-// Render strokes on top of all fills so overlapping lines are never hidden
-const StrokeOverlay = ({ shapes }) => {
+// Renders width/height labels (in mm) outside the bounding box of the
+// currently selected shape. Positioned in shape-local space and rendered
+// inside a Group with the shape's rotation applied so labels follow the
+// shape as it rotates.
+//
+// Local dimensions used: shape.width × scaleX (rotation-ignoring), matching
+// the side panel's "가로/세로" inputs so visual + numeric stay consistent.
+const DimensionLabels = ({ shape, canvasScale }) => {
+    if (!shape || canvasScale <= 0) return null;
+    const w = (shape.width || 0) * (shape.scaleX || 1);
+    const h = (shape.height || 0) * (shape.scaleY || 1);
+    if (w <= 0 || h <= 0) return null;
+
+    const fontSize = 14 / canvasScale;
+    const padding = 8 / canvasScale;
+    const boxW = 200 / canvasScale; // wide enough buffer for centered text
+
+    return (
+        <Group
+            x={shape.x}
+            y={shape.y}
+            rotation={shape.rotation || 0}
+            listening={false}
+        >
+            {/* Bottom-center: width */}
+            <Text
+                text={`${w.toFixed(0)} mm`}
+                x={-boxW / 2}
+                y={h / 2 + padding}
+                width={boxW}
+                align="center"
+                fontSize={fontSize}
+                fill="#1e88e5"
+                fontStyle="600"
+            />
+            {/* Right-center: height (rendered horizontally, not rotated) */}
+            <Text
+                text={`${h.toFixed(0)} mm`}
+                x={w / 2 + padding}
+                y={-fontSize / 2}
+                fontSize={fontSize}
+                fill="#1e88e5"
+                fontStyle="600"
+            />
+        </Group>
+    );
+};
+
+// Render strokes on top of all fills so overlapping lines are never hidden.
+//
+// IMPORTANT: two correctness measures:
+//  (1) Skip the currently-selected shape — Konva's Transformer mutates the
+//      live node during drag/resize/rotate but `shapes` state only updates
+//      on transform end, so an overlay stroke would lag the body during the
+//      drag. The selected shape's own (selection-thick) stroke handles its
+//      visibility anyway.
+//  (2) Include `pathData`/sizing identity in the React key. Konva.Path's
+//      internal data array can desync from the `data` prop in some prop-
+//      change orders (we observed stale spike shapes after spec-edit live
+//      regen). Re-keying forces a fresh Konva node when geometry changes —
+//      cheap because it only happens on actual edits, not on every render.
+const strokeKeyFor = (shape) => {
+    const geom = shape.pathData?.length
+        ?? `${shape.width || 0}x${shape.height || 0}`;
+    return `stroke-${shape.id}-${geom}`;
+};
+
+const StrokeOverlay = ({ shapes, activeShapeId }) => {
     return (
         <Group listening={false}>
-            {shapes.map((shape) => {
+            {shapes.filter(s => s.id !== activeShapeId).map((shape) => {
                 const props = {
                     x: shape.x,
                     y: shape.y,
@@ -28,11 +94,11 @@ const StrokeOverlay = ({ shapes }) => {
                     fill: null
                 };
 
-                const key = `stroke-${shape.id}`;
+                const key = strokeKeyFor(shape);
 
                 switch (shape.type) {
                     case 'parametric':
-                        return <Path key={key} {...props} data={shape.pathData} />;
+                        return <Path key={key} {...props} data={shape.pathData} fillRule="evenodd" />;
                     case 'rect': return <Rect key={key} {...props} width={shape.width} height={shape.height} cornerRadius={shape.cornerRadius} />;
                     case 'circle': return <Circle key={key} {...props} radius={shape.radius} />;
                     case 'triangle': return <RegularPolygon key={key} {...props} sides={3} radius={shape.radius} />;
@@ -48,7 +114,7 @@ const StrokeOverlay = ({ shapes }) => {
 
 // Shape Wrapper component: drag only, no resize/rotate handles.
 // Selection is shown via a thicker stroke (see `isSelected` below).
-const ShapeObject = ({ shapeProps, isSelected, onSelect, onChange, onDoubleClick, canvasScale, selectedFilm, selectedNodeRef }) => {
+const ShapeObject = ({ shapeProps, isSelected, onSelect, onChange, canvasScale, selectedFilm, selectedNodeRef }) => {
     const shapeRef = useRef();
 
     const commonProps = {
@@ -62,8 +128,6 @@ const ShapeObject = ({ shapeProps, isSelected, onSelect, onChange, onDoubleClick
         draggable: true,
         onClick: onSelect,
         onTap: onSelect,
-        onDblClick: onDoubleClick,
-        onDblTap: onDoubleClick,
         dragBoundFunc: (pos) => {
             return {
                 x: pos.x,
@@ -79,13 +143,13 @@ const ShapeObject = ({ shapeProps, isSelected, onSelect, onChange, onDoubleClick
         },
         onTransformEnd: (e) => {
             const node = e.target;
-            const newRotation = node.rotation();
-            // Reset any accidental scale drift (resize is disabled, but be safe)
-            node.scaleX(shapeProps.scaleX || 1);
-            node.scaleY(shapeProps.scaleY || 1);
+            // Preserve both rotation and resize. Konva mutates node.scaleX/Y
+            // during transform; we just persist whatever the user landed on.
             onChange({
                 ...shapeProps,
-                rotation: newRotation,
+                rotation: node.rotation(),
+                scaleX: node.scaleX(),
+                scaleY: node.scaleY(),
             });
         },
         // Apply stored scale explicitly (legacy shapes may have non-1 scale)
@@ -109,11 +173,14 @@ const ShapeObject = ({ shapeProps, isSelected, onSelect, onChange, onDoubleClick
     switch (shapeProps.type) {
         case 'parametric':
             // Parametric shapes: pathData already centered on (0,0) by generator.
+            // fillRule='evenodd' so subpath holes (e.g. ㅇ, o, A inner counter)
+            // render transparent instead of filled.
             ShapeComponent = (
                 <Path
                     data={shapeProps.pathData}
                     offsetX={0}
                     offsetY={0}
+                    fillRule="evenodd"
                     {...commonProps}
                 />
             );
@@ -143,7 +210,7 @@ const ShapeObject = ({ shapeProps, isSelected, onSelect, onChange, onDoubleClick
     return ShapeComponent;
 };
 
-const DrawingCanvas = ({ selectedFilm, shapes, setShapes, activeShapeId, setActiveShapeId, maxLength, onEditShape, onDeleteShape }) => {
+const DrawingCanvas = ({ selectedFilm, shapes, setShapes, activeShapeId, setActiveShapeId, maxLength, onDeleteShape }) => {
     const containerRef = useRef();
     const trRef = useRef();
     const selectedNodeRef = useRef(null);
@@ -229,11 +296,9 @@ const DrawingCanvas = ({ selectedFilm, shapes, setShapes, activeShapeId, setActi
         setShapes(rects);
     };
 
-    const handleDoubleClick = (shape) => {
-        if (shape.type === 'parametric' && typeof onEditShape === 'function') {
-            onEditShape(shape.id);
-        }
-    };
+    // Double-click re-edit was removed — once a shape is placed, the user
+    // adjusts dimensions via the side panel (width/height inputs) rather than
+    // re-opening the original creation modal with stale params.
 
     // Generate grid lines (horizontal and vertical)
     const horizontalLines = [];
@@ -373,25 +438,44 @@ const DrawingCanvas = ({ selectedFilm, shapes, setShapes, activeShapeId, setActi
                                     isSelected={shape.id === activeShapeId}
                                     onSelect={() => setActiveShapeId(shape.id)}
                                     onChange={(newProps) => handleShapeChange(i, newProps)}
-                                    onDoubleClick={() => handleDoubleClick(shape)}
                                     canvasScale={scale}
                                     selectedFilm={selectedFilm}
                                     selectedNodeRef={selectedNodeRef}
                                 />
                             ))}
 
-                            {/* Stroke Overlay (Draws lines of all shapes over top of all fills) */}
-                            <StrokeOverlay shapes={shapes} />
+                            {/* StrokeOverlay was intentionally removed —
+                                each shape (selected or not) draws its own
+                                stroke via ShapeObject. The overlay was a
+                                redundant "always-on-top stroke" insurance
+                                that was the source of intermittent stroke/
+                                body desync after resize, because Konva.Path
+                                node reuse left some scale/transform props
+                                stale even though React passed new values.
+                                Trade-off: in heavily overlapping designs a
+                                lower shape's stroke can be partially hidden
+                                by an upper shape's fill. Acceptable for
+                                film cutting where shapes are placed apart. */}
 
-                            {/* Rotation-only Transformer */}
+                            {/* Dimension labels for the selected shape (mm) */}
+                            <DimensionLabels
+                                shape={shapes.find(s => s.id === activeShapeId)}
+                                canvasScale={scale}
+                            />
+
+                            {/* Rotate + resize transformer */}
                             <Transformer
                                 ref={trRef}
-                                resizeEnabled={false}
+                                resizeEnabled={true}
                                 rotateEnabled={true}
                                 rotationSnaps={[0, 45, 90, 135, 180, 225, 270, 315]}
                                 rotationSnapTolerance={5}
-                                borderEnabled={false}
+                                borderEnabled={true}
+                                borderStroke="#1e88e5"
+                                borderStrokeWidth={1}
                                 anchorSize={10}
+                                anchorFill="#ffffff"
+                                anchorStroke="#1e88e5"
                             />
                         </Group>
                     </Layer>

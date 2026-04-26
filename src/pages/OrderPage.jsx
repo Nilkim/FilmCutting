@@ -12,7 +12,8 @@ import FilmSelector from '../components/FilmSelector';
 import Sidebar from '../components/Sidebar';
 import PricePanel from '../components/PricePanel';
 import DrawingCanvas from '../components/DrawingCanvas';
-import ShapeInputModal from '../components/ShapeInputModal';
+import ShapeSpecEditor from '../components/ShapeSpecEditor';
+import { createDefaultShapeData } from '../utils/shapeRegistry';
 
 function getSeoulDayKey() {
   // YYMMDD (서울 시각 기준, 2자리 연도)
@@ -80,8 +81,11 @@ function OrderPage() {
   const [formErrors, setFormErrors] = useState({});
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [priceSheetOpen, setPriceSheetOpen] = useState(false);
-  const [shapeModal, setShapeModal] = useState(null);
-  // shapeModal = null (closed) or { kind, editingId: string|null, initialParams: object|null }
+  // Sidebar tool buttons immediately add a default shape to the canvas;
+  // the side panel (ShapeSpecEditor) then drives all spec editing live.
+  // Boolean ops (merge/subtract) drop kind/params naturally — for those,
+  // the editor falls back to a transform-only view.
+  const activeShape = activeShapeId ? shapes.find((s) => s.id === activeShapeId) : null;
 
   useReorderLoader({ films, setSelectedFilm, setShapes, setIsModalOpen });
 
@@ -101,39 +105,14 @@ function OrderPage() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [undo, redo]);
 
-  const handleRequestShape = (kind) => {
-    setShapeModal({ kind, editingId: null, initialParams: null });
+  const handleRequestShape = async (kind) => {
     setSidebarOpen(false);
-  };
-
-  const handleEditShape = (shapeId) => {
-    const shape = shapes.find((s) => s.id === shapeId);
-    if (!shape || shape.type !== 'parametric') return;
-    setShapeModal({ kind: shape.kind, editingId: shapeId, initialParams: shape.params });
-  };
-
-  const handleDeleteShape = (shapeId) => {
-    setShapes((prev) => prev.filter((s) => s.id !== shapeId));
-    setActiveShapeId(null);
-  };
-
-  const handleShapeModalConfirm = ({ kind, params, pathData, width, height }) => {
-    if (shapeModal?.editingId) {
-      // 편집: 위치·회전 보존, 치수/필렛만 교체
-      setShapes((prev) => prev.map((s) =>
-        s.id === shapeModal.editingId
-          ? { ...s, kind, params, pathData, width, height }
-          : s
-      ));
-    } else {
+    try {
+      const base = await createDefaultShapeData(kind);
       const newShape = {
         id: uuidv4(),
         type: 'parametric',
-        kind,
-        params,
-        pathData,
-        width,
-        height,
+        ...base,
         x: 610,
         y: 400,
         rotation: 0,
@@ -142,8 +121,24 @@ function OrderPage() {
       };
       setShapes((prev) => [...prev, newShape]);
       setActiveShapeId(newShape.id);
+    } catch (err) {
+      console.error('도형 생성 실패:', err);
     }
-    setShapeModal(null);
+  };
+
+  const handleDeleteShape = (shapeId) => {
+    setShapes((prev) => prev.filter((s) => s.id !== shapeId));
+    setActiveShapeId(null);
+  };
+
+  // Live patch for the selected shape — used by ShapeSpecEditor for both
+  // kind-form regen ({ params, pathData, width, height }) and transform
+  // edits ({ scaleX | scaleY | rotation }). Just merges.
+  const handleUpdateActiveShape = (patch) => {
+    if (!activeShapeId) return;
+    setShapes((prev) => prev.map((s) =>
+      s.id === activeShapeId ? { ...s, ...patch } : s
+    ));
   };
 
   const handleMergeShapes = (type) => {
@@ -460,7 +455,6 @@ function OrderPage() {
                 activeShapeId={activeShapeId}
                 setActiveShapeId={setActiveShapeId}
                 maxLength={calculateMaxLength()}
-                onEditShape={handleEditShape}
                 onDeleteShape={handleDeleteShape}
               />
             </div>
@@ -491,6 +485,18 @@ function OrderPage() {
               >
                 가격 상세 {priceSheetOpen ? '▼' : '▲'}
               </button>
+              {/* Spec editor goes ABOVE the price panel — the user spends
+                  most of their time editing shape specs, so it's the
+                  primary right-column tool. PricePanel stays visible
+                  below as the "summary" footer. */}
+              {activeShape && (
+                <div className="right-side-edit-area">
+                  <ShapeSpecEditor
+                    shape={activeShape}
+                    onUpdate={handleUpdateActiveShape}
+                  />
+                </div>
+              )}
               <PricePanel
                 selectedFilm={selectedFilm}
                 maxLength={calculateMaxLength()}
@@ -627,14 +633,6 @@ function OrderPage() {
         </div>
       )}
 
-      {shapeModal && (
-        <ShapeInputModal
-          kind={shapeModal.kind}
-          initialParams={shapeModal.initialParams}
-          onConfirm={handleShapeModalConfirm}
-          onCancel={() => setShapeModal(null)}
-        />
-      )}
     </div>
   );
 }

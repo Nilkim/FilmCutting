@@ -1,0 +1,137 @@
+/* ShapeSpecEditor.css */
+
+.spec-editor {
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    padding: 14px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    box-shadow: 0 4px 16px rgba(15, 23, 42, 0.06);
+}
+
+.spec-editor-title {
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: #0f172a;
+    border-bottom: 1px solid #e2e8f0;
+    padding-bottom: 8px;
+}
+
+.spec-section {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.spec-section-title {
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: #475569;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.spec-section-hint {
+    font-size: 0.78rem;
+    color: #64748b;
+    line-height: 1.4;
+    background: #f8fafc;
+    padding: 8px 10px;
+    border-radius: 6px;
+}
+
+.spec-row {
+    display: grid;
+    grid-template-columns: 110px 1fr;
+    align-items: center;
+    gap: 10px;
+}
+
+.spec-row label {
+    font-size: 0.85rem;
+    color: #334155;
+    font-weight: 500;
+}
+
+.spec-row input,
+.spec-row select {
+    padding: 7px 10px;
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    font-size: 0.95rem;
+    background: #ffffff;
+    color: #0f172a;
+    outline: none;
+    transition: border-color 0.15s ease;
+    min-width: 0;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.spec-row input:focus,
+.spec-row select:focus {
+    border-color: #2563eb;
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+}
+
+.spec-warning {
+    font-size: 0.85rem;
+    color: #991b1b;
+    background: #fee2e2;
+    border: 1px solid #fca5a5;
+    padding: 8px 10px;
+    border-radius: 6px;
+    line-height: 1.4;
+    word-break: keep-all;
+}
+
+.spec-warning-hint {
+    margin-top: 4px;
+    font-size: 0.78rem;
+    color: #991b1b;
+}
+
+.spec-row-actions {
+    grid-template-columns: 110px 1fr;
+}
+
+.font-upload-btn {
+    padding: 7px 10px;
+    border: 1px dashed #94a3b8;
+    border-radius: 6px;
+    background: #f8fafc;
+    color: #334155;
+    font-size: 0.85rem;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s;
+    text-align: center;
+}
+
+.font-upload-btn:hover:not(:disabled) {
+    background: #e2e8f0;
+    border-color: #64748b;
+}
+
+.font-upload-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.font-license-note {
+    font-size: 0.75rem;
+    color: #64748b;
+    background: #f8fafc;
+    padding: 6px 8px;
+    border-radius: 4px;
+    line-height: 1.4;
+    word-break: keep-all;
+}
+
+.spec-editor-hint {
+    font-size: 0.78rem;
+    color: #64748b;
+    border-top: 1px solid #e2e8f0;
+    padding-top: 8px;
+}
