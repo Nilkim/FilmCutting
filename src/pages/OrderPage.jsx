@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { v4 as uuidv4 } from 'uuid';
+import paper from 'paper';
 import { processTargetBoolean } from '../utils/shapeBoolean';
 import { exportShapesToDXF, importDXFtoShapes } from '../utils/dxfExport';
 import { useHistory } from '../hooks/useHistory';
@@ -14,6 +15,24 @@ import PricePanel from '../components/PricePanel';
 import DrawingCanvas from '../components/DrawingCanvas';
 import ShapeSpecEditor from '../components/ShapeSpecEditor';
 import { createDefaultShapeData } from '../utils/shapeRegistry';
+
+// Tracks viewport breakpoint so the spec editor can switch between an
+// inline panel (desktop, docked in the right column) and a fullscreen modal
+// overlay (mobile, where right-column space is too tight).
+function useIsMobile() {
+  const [isMobile, setIsMobile] = useState(() =>
+    typeof window !== 'undefined'
+      ? window.matchMedia('(max-width: 768px)').matches
+      : false
+  );
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 768px)');
+    const handler = (e) => setIsMobile(e.matches);
+    mq.addEventListener('change', handler);
+    return () => mq.removeEventListener('change', handler);
+  }, []);
+  return isMobile;
+}
 
 function getSeoulDayKey() {
   // YYMMDD (서울 시각 기준, 2자리 연도)
@@ -85,7 +104,18 @@ function OrderPage() {
   // the side panel (ShapeSpecEditor) then drives all spec editing live.
   // Boolean ops (merge/subtract) drop kind/params naturally — for those,
   // the editor falls back to a transform-only view.
+  const isMobile = useIsMobile();
   const activeShape = activeShapeId ? shapes.find((s) => s.id === activeShapeId) : null;
+
+  // Mobile spec sheet visibility — separate from selection so the user can
+  // dismiss the sheet (✕ or backdrop) and still keep the shape selected on
+  // the canvas (transformer handles + blue stroke). Re-tapping the shape or
+  // selecting a different one reopens the sheet automatically.
+  const [specSheetDismissed, setSpecSheetDismissed] = useState(false);
+  const handleSelectShape = (id) => {
+    setActiveShapeId(id);
+    setSpecSheetDismissed(false);
+  };
 
   useReorderLoader({ films, setSelectedFilm, setShapes, setIsModalOpen });
 
@@ -120,7 +150,7 @@ function OrderPage() {
         scaleY: 1,
       };
       setShapes((prev) => [...prev, newShape]);
-      setActiveShapeId(newShape.id);
+      handleSelectShape(newShape.id);
     } catch (err) {
       console.error('도형 생성 실패:', err);
     }
@@ -198,31 +228,52 @@ function OrderPage() {
       setShapes([...remainingShapes, ...newShapesList]);
 
       if (newShapesList.length > 0) {
-        setActiveShapeId(newShapesList[0].id);
+        handleSelectShape(newShapesList[0].id);
       } else {
         setActiveShapeId(null);
       }
     }
   };
 
-  const calculateMaxLength = () => {
+  // Real geometry-based bottom: parses each shape's pathData with Paper.js,
+  // applies the same scale + rotation Konva uses, then takes the actual
+  // tight bbox.bottom of the rendered outline. This matches what the user
+  // visually sees (a rotated triangle's true lowest vertex, not a loose
+  // bounding box) so the billable-area trigger never fires "before" the
+  // shape has actually crossed the boundary.
+  //
+  // Memoized on `shapes` — useHistory replaces the array immutably on edits
+  // so this only re-runs when geometry actually changes, not on unrelated
+  // re-renders (panel toggles, hover, etc.).
+  const maxLength = useMemo(() => {
     if (shapes.length === 0) return 0;
+    if (!paper.project) paper.setup(new paper.Size(1, 1));
 
     let maxY = 0;
-    shapes.forEach(shape => {
+    for (const shape of shapes) {
+      const sx = shape.scaleX || 1;
+      const sy = shape.scaleY || 1;
+      const data = shape.pathData || shape.data;
       let bottom = shape.y;
-      const currentScaleY = shape.scaleY || 1;
 
-      if (shape.type === 'rect') bottom += (shape.height || 0) / 2 * currentScaleY;
-      else if (shape.type === 'path') bottom += (shape.height || 0) / 2 * currentScaleY;
-      else if (shape.radius) bottom += shape.radius * currentScaleY;
-      else if (shape.outerRadius) bottom += shape.outerRadius * currentScaleY;
-      else if (shape.type === 'bubble') bottom += 100 * currentScaleY;
+      if (data) {
+        const item = paper.PathItem.create(data);
+        item.scale(sx, sy, new paper.Point(0, 0));
+        if (shape.rotation) item.rotate(shape.rotation, new paper.Point(0, 0));
+        bottom = shape.y + item.bounds.bottom;
+        item.remove();
+      } else if (shape.height) {
+        bottom += (shape.height / 2) * sy;
+      } else if (shape.radius) {
+        bottom += shape.radius * sy;
+      } else if (shape.outerRadius) {
+        bottom += shape.outerRadius * sy;
+      }
 
       if (bottom > maxY) maxY = bottom;
-    });
+    }
     return maxY;
-  };
+  }, [shapes]);
 
   const canOrder = !!selectedFilm && shapes.length > 0;
 
@@ -303,7 +354,6 @@ function OrderPage() {
         });
       if (uploadError) throw uploadError;
 
-      const maxLength = calculateMaxLength();
       const billableLength = Math.ceil(Math.max(maxLength, 0) / 500) * 500;
       const unitCount = billableLength / 500;
       const totalPrice = unitCount * selectedFilm.pricePer500;
@@ -347,7 +397,7 @@ function OrderPage() {
 
       if (importedShape) {
         setShapes(prev => [...prev, importedShape]);
-        setActiveShapeId(importedShape.id);
+        handleSelectShape(importedShape.id);
       } else {
         alert("DXF 파일을 불러오는 데 실패했거나 빈 도면입니다.");
       }
@@ -453,8 +503,8 @@ function OrderPage() {
                 shapes={shapes}
                 setShapes={setShapes}
                 activeShapeId={activeShapeId}
-                setActiveShapeId={setActiveShapeId}
-                maxLength={calculateMaxLength()}
+                setActiveShapeId={handleSelectShape}
+                maxLength={maxLength}
                 onDeleteShape={handleDeleteShape}
               />
             </div>
@@ -488,8 +538,9 @@ function OrderPage() {
               {/* Spec editor goes ABOVE the price panel — the user spends
                   most of their time editing shape specs, so it's the
                   primary right-column tool. PricePanel stays visible
-                  below as the "summary" footer. */}
-              {activeShape && (
+                  below as the "summary" footer. Desktop only — mobile
+                  uses a fullscreen modal (rendered separately below). */}
+              {!isMobile && activeShape && (
                 <div className="right-side-edit-area">
                   <ShapeSpecEditor
                     shape={activeShape}
@@ -499,7 +550,7 @@ function OrderPage() {
               )}
               <PricePanel
                 selectedFilm={selectedFilm}
-                maxLength={calculateMaxLength()}
+                maxLength={maxLength}
                 onOrder={handleOpenOrderForm}
                 canOrder={canOrder}
               />
@@ -507,6 +558,36 @@ function OrderPage() {
           )}
         </div>
       </div>
+
+      {/* Mobile-only: spec editor as a bottom-sheet modal. The desktop
+          inline panel is hidden on mobile (see right-panel-wrapper above)
+          so this modal is the only spec-edit surface for small screens.
+          Tap backdrop or the close button to dismiss (also deselects so
+          the user can re-tap a shape to bring it back). */}
+      {isMobile && activeShape && !specSheetDismissed && (
+        <div
+          className="spec-modal-backdrop"
+          onClick={() => setSpecSheetDismissed(true)}
+        >
+          <div
+            className="spec-modal-sheet"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              type="button"
+              className="spec-modal-close"
+              onClick={() => setSpecSheetDismissed(true)}
+              aria-label="닫기"
+            >
+              ✕
+            </button>
+            <ShapeSpecEditor
+              shape={activeShape}
+              onUpdate={handleUpdateActiveShape}
+            />
+          </div>
+        </div>
+      )}
 
       {isModalOpen && (
         <div className="modal-overlay" onClick={() => { if (selectedFilm) setIsModalOpen(false) }}>
@@ -598,13 +679,13 @@ function OrderPage() {
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
                 <span>수량 (0.5m 단위)</span>
                 <span>
-                  {Math.ceil(Math.max(calculateMaxLength(), 0) / 500)}
+                  {Math.ceil(Math.max(maxLength, 0) / 500)}
                 </span>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold' }}>
                 <span>예상 총 금액</span>
                 <span>
-                  {(Math.ceil(Math.max(calculateMaxLength(), 0) / 500) * selectedFilm.pricePer500).toLocaleString()}원
+                  {(Math.ceil(Math.max(maxLength, 0) / 500) * selectedFilm.pricePer500).toLocaleString()}원
                 </span>
               </div>
             </div>
