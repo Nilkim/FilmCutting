@@ -370,6 +370,30 @@ export function generateArchPath({ width, height, archHeight = 0, fillet = 0 }) 
     // Build clockwise from a stable starting vertex. The bottom edge gets
     // optional fillet at its two corners; the top is a single arcTo through
     // the apex (0, T).
+    // Top arc as a true HALF-ELLIPSE (rx = w/2, ry = ah), built from two
+    // cubic Béziers (one per quadrant). We avoid Paper.js's arcTo(through,to)
+    // because it fits a single CIRCLE through the three points — when ah
+    // exceeds w/2 the resulting circle has radius > w/2 and bulges OUTSIDE
+    // the body's vertical sides. Ellipse keeps the top strictly within
+    // [-w/2, w/2] regardless of ah, giving "bullet head" geometry when ah
+    // is tall and a flat dome when ah is short.
+    const KAPPA = 0.5522847498; // 4/3 * tan(π/8) — Bézier ⇄ quarter ellipse
+
+    const ellipticalTop = () => {
+        // (R, archStartY) → (0, T)
+        path.cubicCurveTo(
+            new paper.Point(R, archStartY - KAPPA * ah),
+            new paper.Point(KAPPA * R, T),
+            new paper.Point(0, T)
+        );
+        // (0, T) → (L, archStartY)
+        path.cubicCurveTo(
+            new paper.Point(-KAPPA * R, T),
+            new paper.Point(L, archStartY - KAPPA * ah),
+            new paper.Point(L, archStartY)
+        );
+    };
+
     if (r > 0) {
         path.moveTo(new paper.Point(L + r, B));
         path.lineTo(new paper.Point(R - r, B));
@@ -380,10 +404,7 @@ export function generateArchPath({ width, height, archHeight = 0, fillet = 0 }) 
             new paper.Point(R, B - r)
         );
         path.lineTo(new paper.Point(R, archStartY));
-        path.arcTo(
-            new paper.Point(0, T),
-            new paper.Point(L, archStartY)
-        );
+        ellipticalTop();
         path.lineTo(new paper.Point(L, B - r));
         // Bottom-left fillet
         path.cubicCurveTo(
@@ -395,10 +416,7 @@ export function generateArchPath({ width, height, archHeight = 0, fillet = 0 }) 
         path.moveTo(new paper.Point(L, B));
         path.lineTo(new paper.Point(R, B));
         path.lineTo(new paper.Point(R, archStartY));
-        path.arcTo(
-            new paper.Point(0, T),
-            new paper.Point(L, archStartY)
-        );
+        ellipticalTop();
         path.lineTo(new paper.Point(L, B));
     }
 
@@ -495,9 +513,11 @@ export async function generateTextPath({
 
     // makerjs.models.Text signature:
     //   Text(font, text, fontSize, combine?, centerCharacterOrigin?, bezierAccuracy?)
-    // We keep combine=false so each glyph stays independent (lets Paper.js
-    // render compound paths with even-odd fill for holes like ㅇ, o, A, B).
-    const textModel = new makerjs.models.Text(font, str, size, false, false);
+    // combine=true: makerjs가 인접 글리프 외곽을 union으로 합쳐줌. 필기체나
+    // 좁은 자간 폰트에서 글자가 겹쳐 evenodd 규칙상 구멍처럼 보이는 현상을
+    // 막는다. makerjs는 글리프 단위로 outer/hole을 구분해 boolean을 수행하므로
+    // "o", "ㅇ", "A" 안쪽의 진짜 구멍은 그대로 유지됨.
+    const textModel = new makerjs.models.Text(font, str, size, true, false);
 
     const svgPathData = makerjs.exporter.toSVGPathData(textModel, {
         byLayers: false,
