@@ -1,5 +1,6 @@
 import React, { useRef, useEffect, useState } from 'react';
 import { Stage, Layer, Group, Rect, Circle, RegularPolygon, Star, Path, Line, Text, Transformer } from 'react-konva';
+import paper from 'paper';
 import './DrawingCanvas.css';
 
 // Physics scale: Let's assume 1mm = 1px for easy mapping.
@@ -7,6 +8,14 @@ import './DrawingCanvas.css';
 // We will scale the stage to fit the container width.
 const FILM_WIDTH_MM = 1220;
 const GRID_INTERVAL = 500;
+
+// TEMP debug overlay to investigate billable-area over-trigger reports.
+// When true, draws each shape's unrotated bbox (what calculateMaxLength
+// actually "sees") in red dashed lines + a green dashed line at the current
+// billableLength threshold. Toggle via ?debug=bbox in the URL or set the
+// const below to true.
+const DEBUG_BILLABLE = typeof window !== 'undefined'
+    && new URLSearchParams(window.location.search).has('debug');
 
 // Speech bubble path (approximate) — legacy
 const SpeechBubblePath = "M0 0 H 100 V 70 H 20 L 0 100 L 0 70 V 0 Z";
@@ -54,6 +63,75 @@ const DimensionLabels = ({ shape, canvasScale }) => {
                 fontSize={fontSize}
                 fill="#1e88e5"
                 fontStyle="600"
+            />
+        </Group>
+    );
+};
+
+// Debug overlay (?debug in URL): shows the EXACT geometry that the new
+// calc uses — for each shape, draws a short horizontal red dashed segment
+// at the actual lowest Y of its (rotated, scaled) outline. The segment
+// hugs the shape's horizontal extent so multiple shapes don't pile their
+// markers across the whole canvas.
+//
+// If the red segment ever sits ABOVE the visual bottom edge of its shape,
+// the calc is under-triggering. If it sits BELOW the visual bottom, the
+// calc is over-triggering. Goal: red segment should kiss the lowest pixel.
+const computeShapeBoundsDebug = (shape) => {
+    const sx = shape.scaleX || 1;
+    const sy = shape.scaleY || 1;
+    const data = shape.pathData || shape.data;
+    if (data) {
+        if (!paper.project) paper.setup(new paper.Size(1, 1));
+        const item = paper.PathItem.create(data);
+        item.scale(sx, sy, new paper.Point(0, 0));
+        if (shape.rotation) item.rotate(shape.rotation, new paper.Point(0, 0));
+        const b = item.bounds;
+        const out = {
+            bottom: shape.y + b.bottom,
+            left:   shape.x + b.left,
+            right:  shape.x + b.right,
+        };
+        item.remove();
+        return out;
+    }
+    return null;
+};
+
+const DebugBillableOverlay = ({ shapes, billableLength, canvasScale }) => {
+    if (!DEBUG_BILLABLE) return null;
+    return (
+        <Group listening={false}>
+            {shapes.map((shape) => {
+                const b = computeShapeBoundsDebug(shape);
+                if (!b) return null;
+                return (
+                    <Line
+                        key={`dbg-${shape.id}`}
+                        points={[b.left, b.bottom, b.right, b.bottom]}
+                        stroke="#ef4444"
+                        strokeWidth={2 / canvasScale}
+                        strokeScaleEnabled={false}
+                        dash={[8 / canvasScale, 4 / canvasScale]}
+                    />
+                );
+            })}
+            {/* Current billable boundary — once any shape's bottom crosses
+                this, the area expands by another 500mm step. */}
+            <Line
+                points={[0, billableLength, FILM_WIDTH_MM, billableLength]}
+                stroke="#16a34a"
+                strokeWidth={2 / canvasScale}
+                strokeScaleEnabled={false}
+                dash={[10 / canvasScale, 6 / canvasScale]}
+            />
+            {/* Next step boundary — preview of where the trigger would jump to. */}
+            <Line
+                points={[0, billableLength + 500, FILM_WIDTH_MM, billableLength + 500]}
+                stroke="#f59e0b"
+                strokeWidth={1 / canvasScale}
+                strokeScaleEnabled={false}
+                dash={[6 / canvasScale, 6 / canvasScale]}
             />
         </Group>
     );
@@ -143,10 +221,14 @@ const ShapeObject = ({ shapeProps, isSelected, onSelect, onChange, canvasScale, 
         },
         onTransformEnd: (e) => {
             const node = e.target;
-            // Preserve both rotation and resize. Konva mutates node.scaleX/Y
-            // during transform; we just persist whatever the user landed on.
+            // 좌상/좌측/상단 핸들로 크기를 조정하면 Konva가 반대편 anchor를
+            // 고정하면서 node.x/y도 함께 이동시킨다. x/y를 같이 저장하지 않으면
+            // React state는 stale 좌표를 갖게 되고, 합치기·DXF 등 좌표 의존
+            // 연산이 어긋난다(특히 합쳐진 결과의 bounds.center 위치).
             onChange({
                 ...shapeProps,
+                x: node.x(),
+                y: node.y(),
                 rotation: node.rotation(),
                 scaleX: node.scaleX(),
                 scaleY: node.scaleY(),
@@ -460,6 +542,13 @@ const DrawingCanvas = ({ selectedFilm, shapes, setShapes, activeShapeId, setActi
                             {/* Dimension labels for the selected shape (mm) */}
                             <DimensionLabels
                                 shape={shapes.find(s => s.id === activeShapeId)}
+                                canvasScale={scale}
+                            />
+
+                            {/* TEMP debug — shows calc bbox + billable line */}
+                            <DebugBillableOverlay
+                                shapes={shapes}
+                                billableLength={billableLength}
                                 canvasScale={scale}
                             />
 
