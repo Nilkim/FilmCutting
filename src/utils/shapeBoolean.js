@@ -50,6 +50,30 @@ export function konvaShapeToPaperPath(shape) {
             return null;
     }
 
+    // CompoundPath(텍스트, 합쳐진 도형)의 sub-path winding을 정규화한다.
+    // Paper.js의 unite()/subtract()는 winding 기반(nonzero)이라, 입력이
+    // evenodd-스타일(makerjs combine=true 출력 등)이면 hole이 outer로 오인되어
+    // 결과에서 사라진다. 각 sub-path를 다른 sub-path들이 포함하는 개수를 세서:
+    //   짝수 → outer (CW)
+    //   홀수 → hole (CCW)
+    // 즉 even-odd 규칙의 정의 그대로 적용해 nonzero-canonical로 변환.
+    // 캔버스 렌더링은 별도 경로이므로 이 호출이 영향주지 않음.
+    if (path && path.children && path.children.length >= 2) {
+        const children = path.children.slice();
+        for (const child of children) {
+            const sample = child.bounds.center;
+            let depth = 0;
+            for (const other of children) {
+                if (other === child) continue;
+                try { if (other.contains(sample)) depth += 1; } catch { /* skip */ }
+            }
+            const wantCW = (depth % 2 === 0);
+            if (child.clockwise !== wantCW) {
+                try { child.reverse(); } catch { /* skip */ }
+            }
+        }
+    }
+
     path.scale(shape.scaleX || 1, shape.scaleY || 1, new paper.Point(0, 0));
 
     if (shape.rotation) {
