@@ -107,12 +107,18 @@ function OrderPage() {
   const isMobile = useIsMobile();
   const activeShape = activeShapeId ? shapes.find((s) => s.id === activeShapeId) : null;
 
-  // Mobile spec sheet visibility — separate from selection so the user can
-  // dismiss the sheet (✕ or backdrop) and still keep the shape selected on
-  // the canvas (transformer handles + blue stroke). Re-tapping the shape or
-  // selecting a different one reopens the sheet automatically.
-  const [specSheetDismissed, setSpecSheetDismissed] = useState(false);
+  // Mobile spec sheet visibility — fully decoupled from selection.
+  // 단일 탭(선택)은 시트를 열지 않는다. 모바일에서 도형이 생성되거나 탭되는
+  // 즉시 모달이 뜨면 캔버스를 가려 거슬리기 때문. 시트는 명시적인 더블탭/
+  // 더블클릭(handleRequestSpecEdit)으로만 열린다. 초기값을 true(닫힘)로 두면
+  // 도형 생성 직후 자동 선택되어도 시트가 자동으로 뜨지 않는다.
+  const [specSheetDismissed, setSpecSheetDismissed] = useState(true);
   const handleSelectShape = (id) => {
+    setActiveShapeId(id);
+  };
+  // 더블탭/더블클릭 시: 선택 + 시트 열기. 데스크탑은 인라인 패널을 쓰므로
+  // 이 상태가 무시되고, 모바일에서만 모달 트리거로 작동한다.
+  const handleRequestSpecEdit = (id) => {
     setActiveShapeId(id);
     setSpecSheetDismissed(false);
   };
@@ -504,6 +510,7 @@ function OrderPage() {
                 setShapes={setShapes}
                 activeShapeId={activeShapeId}
                 setActiveShapeId={handleSelectShape}
+                onRequestSpecEdit={handleRequestSpecEdit}
                 maxLength={maxLength}
                 onDeleteShape={handleDeleteShape}
               />
