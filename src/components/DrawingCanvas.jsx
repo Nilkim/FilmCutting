@@ -192,7 +192,7 @@ const StrokeOverlay = ({ shapes, activeShapeId }) => {
 
 // Shape Wrapper component: drag only, no resize/rotate handles.
 // Selection is shown via a thicker stroke (see `isSelected` below).
-const ShapeObject = ({ shapeProps, isSelected, onSelect, onChange, canvasScale, selectedFilm, selectedNodeRef }) => {
+const ShapeObject = ({ shapeProps, isSelected, onSelect, onRequestSpecEdit, onChange, canvasScale, selectedFilm, selectedNodeRef }) => {
     const shapeRef = useRef();
 
     const commonProps = {
@@ -206,6 +206,12 @@ const ShapeObject = ({ shapeProps, isSelected, onSelect, onChange, canvasScale, 
         draggable: true,
         onClick: onSelect,
         onTap: onSelect,
+        // 더블탭/더블클릭은 spec 편집 시트를 명시적으로 여는 트리거.
+        // 모바일에서는 단일 탭이 시트를 띄우지 않도록 분리되어 있어서,
+        // 사용자가 의도적으로 두 번 두드려야만 모달이 올라온다.
+        // Konva는 onDblClick(마우스)과 onDblTap(터치)을 별도로 디스패치한다.
+        onDblClick: onRequestSpecEdit,
+        onDblTap: onRequestSpecEdit,
         dragBoundFunc: (pos) => {
             return {
                 x: pos.x,
@@ -292,7 +298,7 @@ const ShapeObject = ({ shapeProps, isSelected, onSelect, onChange, canvasScale, 
     return ShapeComponent;
 };
 
-const DrawingCanvas = ({ selectedFilm, shapes, setShapes, activeShapeId, setActiveShapeId, maxLength, onDeleteShape }) => {
+const DrawingCanvas = ({ selectedFilm, shapes, setShapes, activeShapeId, setActiveShapeId, onRequestSpecEdit, maxLength, onDeleteShape }) => {
     const containerRef = useRef();
     const trRef = useRef();
     const selectedNodeRef = useRef(null);
@@ -519,6 +525,7 @@ const DrawingCanvas = ({ selectedFilm, shapes, setShapes, activeShapeId, setActi
                                     shapeProps={shape}
                                     isSelected={shape.id === activeShapeId}
                                     onSelect={() => setActiveShapeId(shape.id)}
+                                    onRequestSpecEdit={() => onRequestSpecEdit && onRequestSpecEdit(shape.id)}
                                     onChange={(newProps) => handleShapeChange(i, newProps)}
                                     canvasScale={scale}
                                     selectedFilm={selectedFilm}
