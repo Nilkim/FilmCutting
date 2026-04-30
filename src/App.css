@@ -98,12 +98,46 @@
   background: #f1f5f9;
   border: 1px solid #e2e8f0;
   text-decoration: none;
+  cursor: pointer;
   transition: background 0.15s, color 0.15s;
 }
 
 .lookup-link-btn:hover {
   background: #e2e8f0;
   color: #1e293b;
+}
+
+/* 주문 조회 모달 — 일반 modal-content보다 약간 넓게(고객 주문 카드가
+   세로로 늘어서므로) + 우상단에 닫기 버튼 배치를 위해 position: relative */
+.lookup-modal-content {
+  position: relative;
+  max-width: 640px;
+  padding: 24px 20px;
+}
+
+.lookup-modal-close {
+  position: absolute;
+  top: 8px;
+  right: 12px;
+  background: none;
+  border: none;
+  font-size: 20px;
+  color: #64748b;
+  cursor: pointer;
+  padding: 4px 10px;
+  line-height: 1;
+  z-index: 2;
+}
+
+.lookup-modal-close:hover,
+.lookup-modal-close:active {
+  color: #0f172a;
+}
+
+/* 모달 안에서는 lookup의 풀페이지 padding/배경이 사라지므로 헤더만
+   살짝 좁게 — 카드 위쪽 여백 절약. */
+.lookup-modal-content .lookup-header {
+  margin-bottom: 16px;
 }
 
 .order-submit-btn {
