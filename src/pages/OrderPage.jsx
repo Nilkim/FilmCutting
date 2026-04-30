@@ -171,6 +171,28 @@ function OrderPage() {
     setSpecSheetDismissed(true);
   };
 
+  // 도형 복사: 원본 shape 객체를 깊게 복사하고 새 id 부여, 우측 위쪽으로
+  // 살짝 오프셋해 시각적으로 새 도형이라는 걸 보여준다. Konva 좌표계는
+  // y-down이라 "위쪽"은 y 감소. dragBoundFunc가 y >= 0으로 클램프하므로
+  // 음수가 될 우려가 있으면 아래로 떨어뜨려 캔버스 밖으로 나가지 않게 한다.
+  const handleDuplicateShape = (shapeId) => {
+    const src = shapes.find((s) => s.id === shapeId);
+    if (!src) return;
+    const OFFSET = 30;
+    const dy = src.y >= OFFSET ? -OFFSET : OFFSET;
+    const copy = {
+      ...src,
+      // params 객체도 얕은 복사로 분리해 추후 spec 편집이 원본을 건드리지
+      // 않도록 한다.
+      ...(src.params ? { params: { ...src.params } } : {}),
+      id: uuidv4(),
+      x: src.x + OFFSET,
+      y: src.y + dy,
+    };
+    setShapes((prev) => [...prev, copy]);
+    handleSelectShape(copy.id);
+  };
+
   // Live patch for the selected shape — used by ShapeSpecEditor for both
   // kind-form regen ({ params, pathData, width, height }) and transform
   // edits ({ scaleX | scaleY | rotation }). Just merges.
@@ -557,6 +579,7 @@ function OrderPage() {
                     shape={activeShape}
                     onUpdate={handleUpdateActiveShape}
                     onDelete={() => handleDeleteShape(activeShape.id)}
+                    onDuplicate={() => handleDuplicateShape(activeShape.id)}
                   />
                 </div>
               )}
@@ -597,6 +620,7 @@ function OrderPage() {
               shape={activeShape}
               onUpdate={handleUpdateActiveShape}
               onDelete={() => handleDeleteShape(activeShape.id)}
+              onDuplicate={() => handleDuplicateShape(activeShape.id)}
             />
           </div>
         </div>
