@@ -406,7 +406,6 @@ const DrawingCanvas = ({ selectedFilm, shapes, setShapes, activeShapeId, setActi
         <div
             className="canvas-container"
             ref={containerRef}
-            style={{ overflowY: 'auto' }}
             onMouseDown={(e) => {
                 // If they click the gray area outside the Konva canvas entirely
                 if (e.target === containerRef.current || e.target.className === 'canvas-scroll-area') {
