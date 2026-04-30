@@ -1,6 +1,7 @@
 import React, { useRef, useEffect, useState, useMemo } from 'react';
 import { Stage, Layer, Group, Rect, Circle, RegularPolygon, Star, Path, Line, Text, Transformer } from 'react-konva';
 import paper from 'paper';
+import { bakeIfNeeded } from '../utils/shapeBake';
 import './DrawingCanvas.css';
 
 // Physics scale: Let's assume 1mm = 1px for easy mapping.
@@ -287,34 +288,20 @@ const ShapeObject = ({ shapeProps, isSelected, onSelect, onRequestSpecEdit, onCh
         },
         onTransformEnd: (e) => {
             const node = e.target;
-            // 좌상/좌측/상단 핸들로 크기를 조정하면 Konva가 반대편 anchor를
-            // 고정하면서 node.x/y도 함께 이동시킨다. x/y를 같이 저장하지 않으면
-            // React state는 stale 좌표를 갖게 되고, 합치기·DXF 등 좌표 의존
-            // 연산이 어긋난다(특히 합쳐진 결과의 bounds.center 위치).
-            const nextScaleX = node.scaleX();
-            const nextScaleY = node.scaleY();
-            const nextRotation = node.rotation();
-            // resize/rotate가 끝나면 bounds 박스가 변했으므로 새 transform으로
-            // bounds 재계산해 x/y를 캔버스 안으로 clamp. resize 중에는 자유롭게
-            // 동작하되 commit 시점에 안쪽으로 snap — UX/구현 단순함의 균형.
-            const next = computeLocalBounds({
-                ...shapeProps,
-                scaleX: nextScaleX,
-                scaleY: nextScaleY,
-                rotation: nextRotation,
-            });
-            const clampedX = Math.max(-next.left, Math.min(node.x(), FILM_WIDTH_MM - next.right));
-            const clampedY = Math.max(-next.top, node.y());
-            // node에도 즉시 반영해 commit 시점에 시각적 jump 없이 자연스레 snap.
-            node.x(clampedX);
-            node.y(clampedY);
+            // Konva Transformer의 anchor-fixed 동작(우측 핸들 드래그 시
+            // 좌측 고정)을 깨지 않으려면 transform 중에는 node.x/y를 강제로
+            // 바꾸면 안 된다 — clamp를 적용하면 anchor 의미가 무너져 "한쪽
+            // 늘리면 반대쪽도 늘어남" 같은 시각적 깨짐 발생. 그래서 여기선
+            // node가 자연스레 도달한 좌표·스케일·회전을 그대로 저장만 한다.
+            // 캔버스 경계 보호는 dragBoundFunc(드래그 중 sync clamp)이 담당
+            // — 사용자가 transform 후 다시 드래그하면 알아서 안쪽으로 들어옴.
             onChange({
                 ...shapeProps,
-                x: clampedX,
-                y: clampedY,
-                rotation: nextRotation,
-                scaleX: nextScaleX,
-                scaleY: nextScaleY,
+                x: node.x(),
+                y: node.y(),
+                rotation: node.rotation(),
+                scaleX: node.scaleX(),
+                scaleY: node.scaleY(),
             });
         },
         // Apply stored scale explicitly (legacy shapes may have non-1 scale)
@@ -375,7 +362,7 @@ const ShapeObject = ({ shapeProps, isSelected, onSelect, onRequestSpecEdit, onCh
     return ShapeComponent;
 };
 
-const DrawingCanvas = ({ selectedFilm, shapes, setShapes, activeShapeId, setActiveShapeId, onRequestSpecEdit, onShapeChange, maxLength, onDeleteShape }) => {
+const DrawingCanvas = ({ selectedFilm, shapes, setShapes, activeShapeId, setActiveShapeId, onRequestSpecEdit, maxLength, onDeleteShape }) => {
     const containerRef = useRef();
     const trRef = useRef();
     const selectedNodeRef = useRef(null);
@@ -520,14 +507,41 @@ const DrawingCanvas = ({ selectedFilm, shapes, setShapes, activeShapeId, setActi
         return () => window.removeEventListener('keydown', handleKeyDown);
     }, [activeShapeId, setShapes, setActiveShapeId, onDeleteShape]);
 
-    // shape 변경의 단일 진입점. 부모(OrderPage)의 applyShapeChange가
-    // 비균일 scale 자동 베이크 등 추가 처리를 하므로 그쪽으로 위임.
-    // onShapeChange 미제공 시(다른 곳에서 재사용) 폴백으로 직접 setShapes.
-    const handleShapeChange = (id, newProps) => {
-        if (onShapeChange) {
-            onShapeChange(id, newProps);
-        } else {
-            setShapes((prev) => prev.map((s) => (s.id === id ? newProps : s)));
+    // 도형 상태 변경 단일 진입점. canvas의 onDragEnd / onTransformEnd에서
+    // ShapeObject.onChange 콜백으로 호출됨.
+    //
+    // **두 단계 업데이트** — sync 즉시 적용 + async bake 후속 적용:
+    //   1. transform 결과(scale != 1 포함)를 즉시 setShapes → React-Konva가
+    //      바로 새 state로 렌더, node mutation과 React state 사이 시간차
+    //      없음. 이전엔 await bakeIfNeeded 동안 state가 OLD라 다른 re-render
+    //      트리거 시 OLD 값으로 덮어쓰기되어 transform이 revert되는 문제.
+    //   2. 별도로 bakeIfNeeded async 호출. 베이킹 결과가 다르면 두 번째
+    //      setShapes로 baked state 적용. 시각적으로는 동일(visual 보존)이라
+    //      flicker 없음.
+    const handleShapeChange = (index, newProps) => {
+        const oldShape = shapes[index];
+        const scaleChanged = oldShape && (
+            (newProps.scaleX || 1) !== (oldShape.scaleX || 1)
+            || (newProps.scaleY || 1) !== (oldShape.scaleY || 1)
+        );
+        // 1. Sync 즉시 적용
+        setShapes((prev) => {
+            const arr = prev.slice();
+            arr[index] = newProps;
+            return arr;
+        });
+        // 2. Async bake (scale 변경 시만)
+        if (scaleChanged) {
+            bakeIfNeeded(newProps).then((baked) => {
+                if (baked === newProps) return; // 변화 없음(early return된 경우)
+                setShapes((prev) => {
+                    const idx = prev.findIndex((s) => s.id === newProps.id);
+                    if (idx < 0) return prev;
+                    const arr = prev.slice();
+                    arr[idx] = baked;
+                    return arr;
+                });
+            }).catch((err) => console.error('자동 베이킹 실패:', err));
         }
     };
 
@@ -675,7 +689,7 @@ const DrawingCanvas = ({ selectedFilm, shapes, setShapes, activeShapeId, setActi
                                     isSelected={shape.id === activeShapeId}
                                     onSelect={() => setActiveShapeId(shape.id)}
                                     onRequestSpecEdit={() => onRequestSpecEdit && onRequestSpecEdit(shape.id)}
-                                    onChange={(newProps) => handleShapeChange(shape.id, newProps)}
+                                    onChange={(newProps) => handleShapeChange(i, newProps)}
                                     canvasScale={scale}
                                     selectedFilm={selectedFilm}
                                     selectedNodeRef={selectedNodeRef}
