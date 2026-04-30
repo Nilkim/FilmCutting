@@ -358,6 +358,13 @@
     overflow: visible;
     display: flex;
     flex-direction: column;
+    /* 카카오톡/네이버 인앱 브라우저는 하단 navigation bar(좌우 화살표,
+       새로고침 등)가 자동 숨김 안 되어 콘텐츠 마지막 부분을 영구히
+       가린다. env(safe-area-inset-bottom)는 인앱 브라우저에서 보통 0이라
+       의지할 수 없어 고정 100px과 max()로 결합 — iOS는 안전 영역,
+       인앱은 고정값 중 큰 쪽 적용. 이 padding 덕분에 마지막 콘텐츠
+       (가격 패널/주문 버튼)가 브라우저 chrome 위로 스크롤되어 노출됨. */
+    padding-bottom: max(100px, env(safe-area-inset-bottom));
   }
 
   .top-nav {
