@@ -6,6 +6,9 @@
     position: relative;
     /* 데스크탑은 좁은 영역 안에서 내부 스크롤. 모바일에서는 오버라이드. */
     overflow-y: auto;
+    /* 캔버스 상단에 여백 — 사이드바/ruler 사이가 너무 붙어서 시각 위계가
+       답답해 보이는 문제 해결. 좌표계엔 영향 없는 순수 CSS padding. */
+    padding-top: 16px;
 }
 
 .canvas-scroll-area {
