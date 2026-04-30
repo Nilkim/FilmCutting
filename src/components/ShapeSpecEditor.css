@@ -136,20 +136,44 @@
     padding-top: 8px;
 }
 
-/* 도형 삭제 — 모바일에서는 Del 키가 없어 spec 시트 안의 이 버튼이
-   유일한 삭제 수단. 위험 액션이므로 빨간 외곽선/텍스트로 시각적으로
-   분리하고, 카드 맨 아래에 배치해 실수로 누르기 어렵게 한다. */
-.spec-delete-btn {
+/* 카드 맨 아래 액션 행 — 복사/삭제 버튼이 가로로 균등 분할.
+   모바일에서는 Del 키가 없어 이 행이 도형을 정리하는 유일한 수단. */
+.spec-action-row {
+    display: flex;
+    gap: 8px;
     margin-top: 4px;
-    padding: 9px 12px;
-    border: 1px solid #fecaca;
+}
+
+.spec-action-row > button {
+    flex: 1;
+    padding: 9px 8px;
     border-radius: 6px;
-    background: #fff5f5;
-    color: #b91c1c;
     font-size: 0.9rem;
     font-weight: 500;
     cursor: pointer;
     transition: background 0.15s, border-color 0.15s, color 0.15s;
+    min-width: 0;
+}
+
+/* 도형 복사 — 위험 액션이 아니므로 차분한 슬레이트 톤. */
+.spec-duplicate-btn {
+    border: 1px solid #cbd5e1;
+    background: #f8fafc;
+    color: #334155;
+}
+
+.spec-duplicate-btn:hover,
+.spec-duplicate-btn:active {
+    background: #e2e8f0;
+    border-color: #94a3b8;
+    color: #0f172a;
+}
+
+/* 도형 삭제 — 위험 액션이므로 빨간 외곽선/텍스트로 시각적으로 분리. */
+.spec-delete-btn {
+    border: 1px solid #fecaca;
+    background: #fff5f5;
+    color: #b91c1c;
 }
 
 .spec-delete-btn:hover,
@@ -157,6 +181,28 @@
     background: #fee2e2;
     border-color: #f87171;
     color: #991b1b;
+}
+
+/* 정원형 맞추기 — "곡선 부분" 입력행 바로 아래에 두는 보조 액션.
+   숫자 입력행과 같은 들여쓰기에 차분한 링크풍 버튼으로 너무 튀지
+   않도록. dashed border로 "리셋/도구" 성격을 시각화. */
+.arch-reset-btn {
+    align-self: stretch;
+    padding: 6px 10px;
+    border: 1px dashed #94a3b8;
+    border-radius: 6px;
+    background: #f8fafc;
+    color: #475569;
+    font-size: 0.82rem;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.arch-reset-btn:hover,
+.arch-reset-btn:active {
+    background: #e2e8f0;
+    border-color: #64748b;
+    color: #0f172a;
 }
 
 /* ------------------------------------------------------------------ */
