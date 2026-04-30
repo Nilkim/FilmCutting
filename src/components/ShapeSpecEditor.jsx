@@ -139,10 +139,12 @@ function KindForm({ shape, onUpdate }) {
         regenerate({ ...params, [key]: value });
     };
 
-    // 정필렛/정원형 ↺ 수동 버튼은 제거됨 — 자동 베이크가 OrderPage의
-    // applyShapeChange에서 onTransformEnd 시점에 처리한다. 사용자가 도형을
-    // resize하면 즉시 base가 갱신되고 scaleX/Y는 1로 리셋되어 fillet/곡선
-    // 비율이 자동 보존됨.
+    // ※ 정필렛(↺) reset 버튼은 제거되고 자동 베이킹으로 전환됨.
+    // 사용자가 도형을 transform(canvas resize handle 또는 spec editor의
+    // 가로/세로 입력)할 때마다 OrderPage.handleUpdateActiveShape /
+    // DrawingCanvas.handleShapeChange에서 utils/shapeBake.bakeIfNeeded가
+    // 자동으로 호출됨 — scaleX/Y를 base에 굽고 scale=1로 reset해 fillet/
+    // 곡선이 정원형으로 유지된다.
 
     // Missing glyphs detection (text only). Re-runs whenever font, weight,
     // or text changes so the warning stays accurate as the user swaps fonts.
@@ -186,6 +188,7 @@ function KindForm({ shape, onUpdate }) {
                 <ArchFields
                     params={params}
                     onUpdate={updateParam}
+                    scaleX={shape.scaleX || 1}
                     scaleY={shape.scaleY || 1}
                 />
             )}
@@ -413,12 +416,11 @@ function BubbleFields({ params, onUpdate }) {
     );
 }
 
-function ArchFields({ params, onUpdate, scaleY = 1 }) {
+function ArchFields({ params, onUpdate, scaleX = 1, scaleY = 1 }) {
     // archHeight를 "세로 (mm)"와 동일한 단위(스케일 적용된 시각 mm)로 표시.
-    // 자동 베이크가 onTransformEnd 시점에 scaleY를 1로 리셋하므로 보통
-    // displayedArchHeight === params.archHeight지만, 사용자가 캔버스 핸들을
-    // 잡고 있는 동안에는 scaleY가 1이 아닐 수 있어 그동안의 일관성 위해
-    // 유지. commit 시 base로 환산해 저장.
+    // 자동 베이킹 후엔 scaleY=1이라 displayed = base가 되므로 사실상 base값
+    // 그대로 보이지만, 베이킹 직전(transform 진행 중) 상태나 외부 데이터
+    // 로드 직후 등 scaleY != 1일 수 있는 케이스를 위해 곱셈 유지.
     const sy = scaleY > 0 ? scaleY : 1;
     const displayedArchHeight = (params.archHeight || 0) * sy;
 
