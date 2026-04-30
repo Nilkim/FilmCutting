@@ -24,13 +24,14 @@
         touch-action: pan-y;
     }
 
-    /* Konva는 Stage 컨테이너(.konvajs-content)와 내부 canvas에 인라인으로
-       touch-action: none을 걸어 네이티브 스크롤을 차단한다 — 드래그 중
-       페이지가 흔들리는 걸 막기 위함이지만, 빈 캔버스 영역까지 스크롤이
-       죽어버려 모바일에서 회색 여백 외에는 손가락으로 페이지를 내릴 수가
-       없다. !important로 pan-y를 강제해 빈 영역에서도 세로 스크롤 가능.
-       도형 위에서는 Konva의 dragstart가 e.evt.preventDefault()를 호출해
-       스크롤 대신 드래그가 동작 — 두 동작이 자연스럽게 분기된다. */
+    /* Konva는 Stage 컨테이너(.konvajs-content)와 내부 canvas에 inline으로
+       touch-action: none을 박아 네이티브 스크롤을 차단한다 — 드래그 중
+       페이지가 흔들리는 걸 막기 위함이지만, 부모의 pan-y와 교집합되어
+       모바일에서 빈 캔버스 영역까지 스크롤이 죽어버린다(회색 여백만
+       스크롤 가능 → 폭이 좁아 사실상 무용지물). !important로 pan-y를
+       강제해 빈 영역에서 세로 스크롤 가능하게 함. 도형 위에서는 Konva가
+       dragstart 후 touchmove에서 e.evt.preventDefault()를 호출하므로
+       pan-y가 무시되고 드래그가 우선 — 두 동작이 자연스럽게 분기된다. */
     .canvas-container .konvajs-content,
     .canvas-container canvas {
         touch-action: pan-y !important;
