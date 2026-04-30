@@ -6,9 +6,13 @@
     position: relative;
     /* 데스크탑은 좁은 영역 안에서 내부 스크롤. 모바일에서는 오버라이드. */
     overflow-y: auto;
-    /* 캔버스 상단에 여백 — 사이드바/ruler 사이가 너무 붙어서 시각 위계가
-       답답해 보이는 문제 해결. 좌표계엔 영향 없는 순수 CSS padding. */
-    padding-top: 16px;
+    /* Sticky ruler(position: absolute, top: 0, height: 24px)가 stage 상단을
+       덮는 문제 해결. ruler 높이(24px) + breathing room(16px) = 40px만큼
+       padding을 줘 stage가 ruler 아래에서 시작하게 한다. ruler는 absolute
+       이라 padding 영향 없이 top: 0 그대로, stage(.canvas-scroll-area)만
+       padding 박스 아래로 밀려 ruler 아래 위치. dragBoundFunc는 Konva의
+       getAbsoluteTransform이 padding 변화를 자동 반영하므로 좌표계 영향 X. */
+    padding-top: 40px;
 }
 
 .canvas-scroll-area {
