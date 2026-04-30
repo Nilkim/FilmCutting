@@ -70,27 +70,38 @@ function CompositionSafeInput({ value, onChange, ...rest }) {
 // Inputs use uncontrolled DOM (defaultValue, re-keyed on shape.id) and
 // commit on blur or Enter to keep typing responsive without clobbering
 // half-typed values when shape props change from canvas drag.
-export default function ShapeSpecEditor({ shape, onUpdate, onDelete }) {
+export default function ShapeSpecEditor({ shape, onUpdate, onDelete, onDuplicate }) {
     if (!shape) return null;
 
     const hasKind = shape.kind && shape.params;
+    const hasActions = onDelete || onDuplicate;
 
     return (
         <div className="spec-editor">
             <div className="spec-editor-title">선택된 도형</div>
             {hasKind && <KindForm shape={shape} onUpdate={onUpdate} />}
             <TransformSection shape={shape} onUpdate={onUpdate} />
-            <div className="spec-editor-hint">
-                숫자를 바꾸면 캔버스에 바로 반영돼요.
-            </div>
-            {onDelete && (
-                <button
-                    type="button"
-                    className="spec-delete-btn"
-                    onClick={onDelete}
-                >
-                    🗑 도형 삭제
-                </button>
+            {hasActions && (
+                <div className="spec-action-row">
+                    {onDuplicate && (
+                        <button
+                            type="button"
+                            className="spec-duplicate-btn"
+                            onClick={onDuplicate}
+                        >
+                            📄 도형 복사
+                        </button>
+                    )}
+                    {onDelete && (
+                        <button
+                            type="button"
+                            className="spec-delete-btn"
+                            onClick={onDelete}
+                        >
+                            🗑 도형 삭제
+                        </button>
+                    )}
+                </div>
             )}
         </div>
     );
@@ -170,7 +181,9 @@ function KindForm({ shape, onUpdate }) {
                 <ArchFields
                     params={params}
                     onUpdate={updateParam}
+                    scaleX={shape.scaleX || 1}
                     scaleY={shape.scaleY || 1}
+                    baseWidth={shape.width || params.width}
                 />
             )}
             {/* circle has no extras */}
@@ -397,15 +410,27 @@ function BubbleFields({ params, onUpdate }) {
     );
 }
 
-function ArchFields({ params, onUpdate, scaleY = 1 }) {
+function ArchFields({ params, onUpdate, scaleX = 1, scaleY = 1, baseWidth = 0 }) {
     // archHeight를 "세로 (mm)"와 동일한 단위(스케일 적용된 시각 mm)로 표시.
     // 사용자가 Transform 섹션에서 세로를 바꾸면 scaleY가 바뀌고, 이 파생값
     // displayedArchHeight도 자동으로 갱신되어 두 값의 비율이 일관되게 보인다.
     // commit 시에는 다시 base 단위로 환산해 저장 — base를 기준으로 path가
     // 재생성되어야 곡선부/본체 비율 계산(반타원 rx=w/2, ry=archHeight)이
     // 정확하기 때문.
+    const sx = scaleX > 0 ? scaleX : 1;
     const sy = scaleY > 0 ? scaleY : 1;
     const displayedArchHeight = (params.archHeight || 0) * sy;
+
+    // 정원형 버튼: 시각적 곡선부가 정확한 반원이 되도록 archHeight 재설정.
+    //   visual rx = (baseW/2) * scaleX
+    //   visual ry = baseArchHeight * scaleY
+    //   정원형 ⇔ rx == ry  ⇔  baseArchHeight = (baseW * scaleX) / (2 * scaleY)
+    // scaleX === scaleY인 일반 케이스에선 baseW/2로 단순화됨.
+    const setSemicircle = () => {
+        const newBase = (baseWidth * sx) / (2 * sy);
+        onUpdate('archHeight', Math.max(0, newBase));
+    };
+
     return (
         <>
             <NumberRow
@@ -417,6 +442,14 @@ function ArchFields({ params, onUpdate, scaleY = 1 }) {
                     onUpdate('archHeight', base);
                 }}
             />
+            <button
+                type="button"
+                className="arch-reset-btn"
+                onClick={setSemicircle}
+                title="곡선 부분을 가로폭의 절반으로 맞춰 정원형 아치를 만든다"
+            >
+                ↺ 정원형으로 맞추기
+            </button>
             <NumberRow
                 label="필렛 (mm)"
                 value={params.fillet}
