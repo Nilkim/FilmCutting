@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { useNavigate, useLocation, Link } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { v4 as uuidv4 } from 'uuid';
 import paper from 'paper';
 import { processTargetBoolean } from '../utils/shapeBoolean';
@@ -7,7 +7,6 @@ import { exportShapesToDXF, importDXFtoShapes } from '../utils/dxfExport';
 import { useHistory } from '../hooks/useHistory';
 import { useFilms } from '../hooks/useFilms';
 import { useReorderLoader } from '../hooks/useReorderLoader';
-import { useOrderDraft, clearOrderDraft } from '../hooks/useOrderDraft';
 import { supabase } from '../lib/supabase';
 import { Undo2, Redo2, Menu } from 'lucide-react';
 import FilmSelector from '../components/FilmSelector';
@@ -15,7 +14,8 @@ import Sidebar from '../components/Sidebar';
 import PricePanel from '../components/PricePanel';
 import DrawingCanvas from '../components/DrawingCanvas';
 import ShapeSpecEditor from '../components/ShapeSpecEditor';
-import { createDefaultShapeData, generateForKind } from '../utils/shapeRegistry';
+import OrderLookupPage from './OrderLookupPage';
+import { createDefaultShapeData } from '../utils/shapeRegistry';
 
 // Tracks viewport breakpoint so the spec editor can switch between an
 // inline panel (desktop, docked in the right column) and a fullscreen modal
@@ -90,7 +90,6 @@ const Stepper = ({ currentStep, onStepClick, canGoStep2, canGoStep3 }) => {
 
 function OrderPage() {
   const navigate = useNavigate();
-  const location = useLocation();
   const { films, loading: filmsLoading } = useFilms();
   const [selectedFilm, setSelectedFilm] = useState(null);
   const [isModalOpen, setIsModalOpen] = useState(true);
@@ -102,6 +101,20 @@ function OrderPage() {
   const [formErrors, setFormErrors] = useState({});
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [priceSheetOpen, setPriceSheetOpen] = useState(false);
+  // 주문 조회를 라우트가 아닌 모달로 띄워 작성 중인 도형 상태를 보존.
+  // location.state.openLookup이 true면(=/order/lookup redirect 또는
+  // OrderCompletePage에서 진입) 자동 오픈.
+  const [isLookupOpen, setIsLookupOpen] = useState(false);
+  const location = useLocation();
+  useEffect(() => {
+    if (location.state?.openLookup) {
+      setIsLookupOpen(true);
+      // 한 번 열고 나면 history state를 정리해 새로고침 시 다시 열리지
+      // 않도록 한다.
+      navigate('.', { replace: true, state: null });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   // Sidebar tool buttons immediately add a default shape to the canvas;
   // the side panel (ShapeSpecEditor) then drives all spec editing live.
   // Boolean ops (merge/subtract) drop kind/params naturally — for those,
@@ -127,20 +140,21 @@ function OrderPage() {
 
   useReorderLoader({ films, setSelectedFilm, setShapes, setIsModalOpen });
 
-  // 작성 중인 도형/필름/전화번호를 sessionStorage에 자동 저장.
-  // 사용자가 주문 조회 등 다른 페이지로 다녀와도 그리던 내용이 살아있도록.
-  // useReorderLoader 다음에 둬서 재주문 흐름이 우선 처리되게 한다.
-  useOrderDraft({
-    films,
-    locationState: location.state,
-    shapes,
-    selectedFilm,
-    customerPhone,
-    setShapes,
-    setSelectedFilm,
-    setCustomerPhone,
-    setIsModalOpen,
-  });
+  // Lookup 모달에서 재주문 선택 시 — 작성 중이던 도면을 그대로 덮어쓴다
+  // (사용자 결정). useHistory가 setShapes를 추적하므로 사용자가 실수해도
+  // Ctrl+Z로 직전 도면 복원 가능.
+  const handleReorderFromLookup = (order) => {
+    const film = films.find((f) => f.id === order.film_id);
+    if (film) {
+      setSelectedFilm(film);
+      setIsModalOpen(false);
+    }
+    if (Array.isArray(order.shapes_json)) {
+      setShapes(order.shapes_json);
+    }
+    setActiveShapeId(null);
+    setIsLookupOpen(false);
+  };
 
   useEffect(() => {
     const handleKeyDown = (e) => {
@@ -210,93 +224,14 @@ function OrderPage() {
     handleSelectShape(copy.id);
   };
 
-  // 도형 변경의 단일 진입점. 직접 setShapes를 호출하지 않고 이 함수로 일원화.
-  //
-  // 비균일 스케일 베이킹(bake):
-  //   parametric(kind+params 보유, text 제외) 도형의 scaleX/scaleY가 1이
-  //   아닌 값으로 "변경"되면, 그 스케일을 즉시 params.width/height(/archHeight)
-  //   에 흡수해 path를 새 base 치수로 재생성하고 scale을 1로 리셋한다.
-  //   이러면 필렛/곡선 등 원형 요소가 비례 변경 후에도 정원형으로 유지됨.
-  //   (그렇지 않으면 Konva의 scaleX≠scaleY 변환이 원호를 타원호로 일그러뜨림)
-  //
-  // bake 트리거 조건:
-  //   - parametric 도형
-  //   - patch가 scaleX 또는 scaleY를 "현재값과 다른" 값으로 바꿈 (단순 위치
-  //     이동이나 동일값 재할당은 제외)
-  //   - 새 스케일 값이 1이 아님 (scaleNonUnit)
-  //   - patch가 KindForm의 regen 산물이 아님 (params 참조 동일성으로 판별)
-  //
-  // 비-parametric(boolean으로 합쳐진 path)이나 text는 기존처럼 scale로
-  // 시각만 늘림 — 재구성 정보가 없거나 의미가 다르기 때문.
-  const applyShapeChange = (shapeId, patch) => {
-    const current = shapes.find((s) => s.id === shapeId);
-    if (!current) return;
-
-    const isParametric =
-      current.kind && current.kind !== 'text' && current.params;
-    const newSx =
-      patch.scaleX !== undefined ? patch.scaleX : (current.scaleX ?? 1);
-    const newSy =
-      patch.scaleY !== undefined ? patch.scaleY : (current.scaleY ?? 1);
-    const scaleChanged =
-      (patch.scaleX !== undefined && patch.scaleX !== (current.scaleX ?? 1)) ||
-      (patch.scaleY !== undefined && patch.scaleY !== (current.scaleY ?? 1));
-    const scaleNonUnit =
-      Math.abs(newSx - 1) > 1e-6 || Math.abs(newSy - 1) > 1e-6;
-    const isRegenPatch = patch.params && patch.params !== current.params;
-
-    if (!isParametric || isRegenPatch || !scaleChanged || !scaleNonUnit) {
-      setShapes((prev) =>
-        prev.map((s) => (s.id === shapeId ? { ...s, ...patch } : s))
-      );
-      return;
-    }
-
-    // 비균일/비-1 스케일을 base에 굽기.
-    const baseP = current.params;
-    const newParams = { ...baseP };
-    if (typeof baseP.width === 'number') newParams.width = baseP.width * newSx;
-    if (typeof baseP.height === 'number') newParams.height = baseP.height * newSy;
-    if (current.kind === 'arch' && typeof baseP.archHeight === 'number') {
-      newParams.archHeight = baseP.archHeight * newSy;
-    }
-
-    generateForKind(current.kind, newParams)
-      .then((g) => {
-        setShapes((prev) =>
-          prev.map((s) =>
-            s.id === shapeId
-              ? {
-                  ...s,
-                  ...patch,
-                  params: newParams,
-                  pathData: g.pathData,
-                  width: g.width,
-                  height: g.height,
-                  scaleX: 1,
-                  scaleY: 1,
-                }
-              : s
-          )
-        );
-      })
-      .catch((err) => {
-        console.error('도형 비례 정규화 실패:', err);
-        // fallback: 그냥 패치만 적용 (필렛이 타원형이 될 수 있지만 동작은 유지)
-        setShapes((prev) =>
-          prev.map((s) => (s.id === shapeId ? { ...s, ...patch } : s))
-        );
-      });
-  };
-
   // Live patch for the selected shape — used by ShapeSpecEditor for both
   // kind-form regen ({ params, pathData, width, height }) and transform
-  // edits ({ scaleX | scaleY | rotation }). Routes through applyShapeChange
-  // so non-uniform scale changes get baked into params (preserving circular
-  // fillets etc.).
+  // edits ({ scaleX | scaleY | rotation }). Just merges.
   const handleUpdateActiveShape = (patch) => {
     if (!activeShapeId) return;
-    applyShapeChange(activeShapeId, patch);
+    setShapes((prev) => prev.map((s) =>
+      s.id === activeShapeId ? { ...s, ...patch } : s
+    ));
   };
 
   const handleMergeShapes = (type) => {
@@ -505,9 +440,6 @@ function OrderPage() {
       });
       if (insertError) throw insertError;
 
-      // 주문이 DB에 들어갔으면 더 이상 draft를 보관할 이유 없음. 새로 /order에
-      // 들어왔을 때 이전 주문의 도형이 부활하지 않도록 sessionStorage 정리.
-      clearOrderDraft();
       navigate(`/order/complete/${orderCode}`);
     } catch (err) {
       console.error('Order submit failed', err);
@@ -590,13 +522,14 @@ function OrderPage() {
             </button>
           </div>
 
-          <Link
-            to="/order/lookup"
+          <button
+            type="button"
+            onClick={() => setIsLookupOpen(true)}
             className="lookup-link-btn"
             title="내 주문 조회"
           >
             주문 조회
-          </Link>
+          </button>
         </div>
       </header>
 
@@ -636,7 +569,6 @@ function OrderPage() {
                 activeShapeId={activeShapeId}
                 setActiveShapeId={handleSelectShape}
                 onRequestSpecEdit={handleRequestSpecEdit}
-                onShapeChange={applyShapeChange}
                 maxLength={maxLength}
                 onDeleteShape={handleDeleteShape}
               />
@@ -721,6 +653,29 @@ function OrderPage() {
               onUpdate={handleUpdateActiveShape}
               onDelete={() => handleDeleteShape(activeShape.id)}
               onDuplicate={() => handleDuplicateShape(activeShape.id)}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* 주문 조회 모달 — 라우트로 분리하지 않아 OrderPage가 unmount되지
+          않으므로 작성 중인 도형/필름/undo 스택이 보존된다. 재주문 선택 시
+          handleReorderFromLookup이 도면을 덮어쓴다. */}
+      {isLookupOpen && (
+        <div className="modal-overlay" onClick={() => setIsLookupOpen(false)}>
+          <div className="modal-content lookup-modal-content" onClick={(e) => e.stopPropagation()}>
+            <button
+              type="button"
+              className="lookup-modal-close"
+              onClick={() => setIsLookupOpen(false)}
+              aria-label="닫기"
+            >
+              ✕
+            </button>
+            <OrderLookupPage
+              embedded
+              onClose={() => setIsLookupOpen(false)}
+              onSelectReorder={handleReorderFromLookup}
             />
           </div>
         </div>
