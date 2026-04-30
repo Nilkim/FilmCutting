@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { v4 as uuidv4 } from 'uuid';
 import paper from 'paper';
 import { processTargetBoolean } from '../utils/shapeBoolean';
@@ -7,6 +7,7 @@ import { exportShapesToDXF, importDXFtoShapes } from '../utils/dxfExport';
 import { useHistory } from '../hooks/useHistory';
 import { useFilms } from '../hooks/useFilms';
 import { useReorderLoader } from '../hooks/useReorderLoader';
+import { useOrderDraft, clearOrderDraft } from '../hooks/useOrderDraft';
 import { supabase } from '../lib/supabase';
 import { Undo2, Redo2, Menu } from 'lucide-react';
 import FilmSelector from '../components/FilmSelector';
@@ -89,6 +90,7 @@ const Stepper = ({ currentStep, onStepClick, canGoStep2, canGoStep3 }) => {
 
 function OrderPage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { films, loading: filmsLoading } = useFilms();
   const [selectedFilm, setSelectedFilm] = useState(null);
   const [isModalOpen, setIsModalOpen] = useState(true);
@@ -124,6 +126,21 @@ function OrderPage() {
   };
 
   useReorderLoader({ films, setSelectedFilm, setShapes, setIsModalOpen });
+
+  // 작성 중인 도형/필름/전화번호를 sessionStorage에 자동 저장.
+  // 사용자가 주문 조회 등 다른 페이지로 다녀와도 그리던 내용이 살아있도록.
+  // useReorderLoader 다음에 둬서 재주문 흐름이 우선 처리되게 한다.
+  useOrderDraft({
+    films,
+    locationState: location.state,
+    shapes,
+    selectedFilm,
+    customerPhone,
+    setShapes,
+    setSelectedFilm,
+    setCustomerPhone,
+    setIsModalOpen,
+  });
 
   useEffect(() => {
     const handleKeyDown = (e) => {
@@ -409,6 +426,9 @@ function OrderPage() {
       });
       if (insertError) throw insertError;
 
+      // 주문이 DB에 들어갔으면 더 이상 draft를 보관할 이유 없음. 새로 /order에
+      // 들어왔을 때 이전 주문의 도형이 부활하지 않도록 sessionStorage 정리.
+      clearOrderDraft();
       navigate(`/order/complete/${orderCode}`);
     } catch (err) {
       console.error('Order submit failed', err);
