@@ -136,6 +136,29 @@
     padding-top: 8px;
 }
 
+/* 도형 삭제 — 모바일에서는 Del 키가 없어 spec 시트 안의 이 버튼이
+   유일한 삭제 수단. 위험 액션이므로 빨간 외곽선/텍스트로 시각적으로
+   분리하고, 카드 맨 아래에 배치해 실수로 누르기 어렵게 한다. */
+.spec-delete-btn {
+    margin-top: 4px;
+    padding: 9px 12px;
+    border: 1px solid #fecaca;
+    border-radius: 6px;
+    background: #fff5f5;
+    color: #b91c1c;
+    font-size: 0.9rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.spec-delete-btn:hover,
+.spec-delete-btn:active {
+    background: #fee2e2;
+    border-color: #f87171;
+    color: #991b1b;
+}
+
 /* ------------------------------------------------------------------ */
 /* Mobile spec editor as bottom sheet                                  */
 /* ------------------------------------------------------------------ */
