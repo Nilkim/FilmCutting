@@ -89,7 +89,7 @@ export default function ShapeSpecEditor({ shape, onUpdate, onDelete, onDuplicate
                             className="spec-duplicate-btn"
                             onClick={onDuplicate}
                         >
-                            📄 도형 복사
+                            📄 복사
                         </button>
                     )}
                     {onDelete && (
@@ -98,7 +98,7 @@ export default function ShapeSpecEditor({ shape, onUpdate, onDelete, onDuplicate
                             className="spec-delete-btn"
                             onClick={onDelete}
                         >
-                            🗑 도형 삭제
+                            🗑 삭제
                         </button>
                     )}
                 </div>
@@ -441,15 +441,18 @@ function ArchFields({ params, onUpdate, scaleX = 1, scaleY = 1, baseWidth = 0 })
                     const base = Math.max(0, v / sy);
                     onUpdate('archHeight', base);
                 }}
+                prefix={
+                    <button
+                        type="button"
+                        className="arch-reset-btn"
+                        onClick={setSemicircle}
+                        title="정원형 아치 (가로폭의 절반)"
+                        aria-label="정원형으로 맞추기"
+                    >
+                        ↺
+                    </button>
+                }
             />
-            <button
-                type="button"
-                className="arch-reset-btn"
-                onClick={setSemicircle}
-                title="곡선 부분을 가로폭의 절반으로 맞춰 정원형 아치를 만든다"
-            >
-                ↺ 정원형으로 맞추기
-            </button>
             <NumberRow
                 label="필렛 (mm)"
                 value={params.fillet}
@@ -525,7 +528,7 @@ function TransformSection({ shape, onUpdate }) {
 // each parent guards its own min/max constraints (e.g. width > 0). The
 // shape stays at its last valid state until a valid number arrives.
 // ------------------------------------------------------------------
-function NumberRow({ label, value, min, max, step = 1, onCommit }) {
+function NumberRow({ label, value, min, max, step = 1, onCommit, prefix }) {
     const [raw, setRaw] = useState(String(value));
     const focusedRef = useRef(false);
 
@@ -537,28 +540,39 @@ function NumberRow({ label, value, min, max, step = 1, onCommit }) {
         setRaw(String(value));
     }, [value]);
 
+    const inputEl = (
+        <input
+            type="number"
+            value={raw}
+            min={min}
+            max={max}
+            step={step}
+            onFocus={() => { focusedRef.current = true; }}
+            onBlur={() => {
+                focusedRef.current = false;
+                // Resync to whatever the canonical value is now (parent
+                // may have clamped/rounded the last commit).
+                setRaw(String(value));
+            }}
+            onChange={(e) => {
+                setRaw(e.target.value);
+                const v = Number(e.target.value);
+                if (Number.isFinite(v)) onCommit(v);
+            }}
+        />
+    );
+
     return (
         <div className="spec-row">
             <label>{label}</label>
-            <input
-                type="number"
-                value={raw}
-                min={min}
-                max={max}
-                step={step}
-                onFocus={() => { focusedRef.current = true; }}
-                onBlur={() => {
-                    focusedRef.current = false;
-                    // Resync to whatever the canonical value is now (parent
-                    // may have clamped/rounded the last commit).
-                    setRaw(String(value));
-                }}
-                onChange={(e) => {
-                    setRaw(e.target.value);
-                    const v = Number(e.target.value);
-                    if (Number.isFinite(v)) onCommit(v);
-                }}
-            />
+            {prefix ? (
+                <div className="spec-row-input-group">
+                    {prefix}
+                    {inputEl}
+                </div>
+            ) : (
+                inputEl
+            )}
         </div>
     );
 }
