@@ -70,7 +70,7 @@ function CompositionSafeInput({ value, onChange, ...rest }) {
 // Inputs use uncontrolled DOM (defaultValue, re-keyed on shape.id) and
 // commit on blur or Enter to keep typing responsive without clobbering
 // half-typed values when shape props change from canvas drag.
-export default function ShapeSpecEditor({ shape, onUpdate }) {
+export default function ShapeSpecEditor({ shape, onUpdate, onDelete }) {
     if (!shape) return null;
 
     const hasKind = shape.kind && shape.params;
@@ -83,6 +83,15 @@ export default function ShapeSpecEditor({ shape, onUpdate }) {
             <div className="spec-editor-hint">
                 숫자를 바꾸면 캔버스에 바로 반영돼요.
             </div>
+            {onDelete && (
+                <button
+                    type="button"
+                    className="spec-delete-btn"
+                    onClick={onDelete}
+                >
+                    🗑 도형 삭제
+                </button>
+            )}
         </div>
     );
 }
