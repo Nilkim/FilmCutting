@@ -4,9 +4,23 @@
     height: 100%;
     background-color: var(--canvas-bg);
     position: relative;
+    /* 데스크탑은 좁은 영역 안에서 내부 스크롤. 모바일에서는 오버라이드. */
+    overflow-y: auto;
 }
 
 .canvas-scroll-area {
     width: 100%;
     min-height: 100%;
+}
+
+/* 모바일: 캔버스 자체를 내부 스크롤 컨테이너로 두지 않고 페이지 흐름에
+   맡긴다. 빈 영역을 터치하면 페이지가 세로로 스크롤되도록 touch-action:
+   pan-y를 명시. 도형을 터치하면 Konva의 드래그 로직이 동작해 스크롤
+   대신 도형 이동이 일어남(자체적으로 preventDefault). */
+@media (max-width: 768px) {
+    .canvas-container {
+        overflow: visible;
+        height: auto;
+        touch-action: pan-y;
+    }
 }
