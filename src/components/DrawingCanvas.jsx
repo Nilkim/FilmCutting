@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useState } from 'react';
+import React, { useRef, useEffect, useState, useMemo } from 'react';
 import { Stage, Layer, Group, Rect, Circle, RegularPolygon, Star, Path, Line, Text, Transformer } from 'react-konva';
 import paper from 'paper';
 import './DrawingCanvas.css';
@@ -68,16 +68,18 @@ const DimensionLabels = ({ shape, canvasScale }) => {
     );
 };
 
-// Debug overlay (?debug in URL): shows the EXACT geometry that the new
-// calc uses — for each shape, draws a short horizontal red dashed segment
-// at the actual lowest Y of its (rotated, scaled) outline. The segment
-// hugs the shape's horizontal extent so multiple shapes don't pile their
-// markers across the whole canvas.
+// 도형 하나의 **local bounds**(원점 기준, scaleX/Y와 rotation 적용된 후의
+// path 외곽 박스)를 계산. shape.x/y는 더하지 않는다 — 호출처가 필요 시
+// 더해서 world coord으로 변환. Paper.js로 정확한 회전/스케일 후 bounds를
+// 뽑으므로 회전된 도형도 정확. pathData 없는 primitive shape엔 fallback
+// (width/height 또는 radius 기반 단순 박스).
 //
-// If the red segment ever sits ABOVE the visual bottom edge of its shape,
-// the calc is under-triggering. If it sits BELOW the visual bottom, the
-// calc is over-triggering. Goal: red segment should kiss the lowest pixel.
-const computeShapeBoundsDebug = (shape) => {
+// 용도:
+//   - DebugBillableOverlay: 빨간 dashed 4면 박스 시각화
+//   - ShapeObject.dragBoundFunc: 좌/우/상 캔버스 경계 clamp
+//   - ShapeObject.onTransformEnd: resize/rotate 후 x/y clamp
+//   - OrderPage maxLength: bottom 기반 billable 계산 (별도 코드 — 향후 통합 가능)
+const computeLocalBounds = (shape) => {
     const sx = shape.scaleX || 1;
     const sy = shape.scaleY || 1;
     const data = shape.pathData || shape.data;
@@ -87,32 +89,52 @@ const computeShapeBoundsDebug = (shape) => {
         item.scale(sx, sy, new paper.Point(0, 0));
         if (shape.rotation) item.rotate(shape.rotation, new paper.Point(0, 0));
         const b = item.bounds;
-        const out = {
-            bottom: shape.y + b.bottom,
-            left:   shape.x + b.left,
-            right:  shape.x + b.right,
-        };
+        const out = { left: b.left, right: b.right, top: b.top, bottom: b.bottom };
         item.remove();
         return out;
     }
-    return null;
+    // pathData 없는 legacy primitive 폴백 — 중심 정렬 단순 박스
+    const w = (shape.width || (shape.radius || 0) * 2 || 100) * sx;
+    const h = (shape.height || (shape.radius || 0) * 2 || 100) * sy;
+    return { left: -w / 2, right: w / 2, top: -h / 2, bottom: h / 2 };
 };
 
+// World coord bounds — debug overlay에서 그대로 그릴 수 있는 절대 좌표.
+const computeWorldBounds = (shape) => {
+    const local = computeLocalBounds(shape);
+    return {
+        left:   shape.x + local.left,
+        right:  shape.x + local.right,
+        top:    shape.y + local.top,
+        bottom: shape.y + local.bottom,
+    };
+};
+
+// Debug overlay (?debug in URL): 각 도형의 **실제 4면 bounds**를 빨간
+// dashed Rect로 그려 회전·스케일 적용된 정확한 외곽선을 시각화.
+// 추가로 현재 billable 경계(초록), 다음 step 경계(주황) 표시.
+//
+// 기존엔 bottom 라인 하나뿐이었지만 ShapeObject가 4방향 경계 clamp를
+// 사용하면서 시각적으로도 4면을 보여주는 게 디버깅에 일관됨.
 const DebugBillableOverlay = ({ shapes, billableLength, canvasScale }) => {
     if (!DEBUG_BILLABLE) return null;
     return (
         <Group listening={false}>
             {shapes.map((shape) => {
-                const b = computeShapeBoundsDebug(shape);
+                const b = computeWorldBounds(shape);
                 if (!b) return null;
                 return (
-                    <Line
+                    <Rect
                         key={`dbg-${shape.id}`}
-                        points={[b.left, b.bottom, b.right, b.bottom]}
+                        x={b.left}
+                        y={b.top}
+                        width={b.right - b.left}
+                        height={b.bottom - b.top}
                         stroke="#ef4444"
                         strokeWidth={2 / canvasScale}
                         strokeScaleEnabled={false}
                         dash={[8 / canvasScale, 4 / canvasScale]}
+                        listening={false}
                     />
                 );
             })}
@@ -195,6 +217,19 @@ const StrokeOverlay = ({ shapes, activeShapeId }) => {
 const ShapeObject = ({ shapeProps, isSelected, onSelect, onRequestSpecEdit, onChange, canvasScale, selectedFilm, selectedNodeRef }) => {
     const shapeRef = useRef();
 
+    // 도형의 local bounds를 캐시. dragBoundFunc는 매 mousemove 호출되므로
+    // Paper.js path 매번 만들면 frame drop. transform이 안 바뀌는 drag 중엔
+    // 한 번만 계산되도록 useMemo. resize/rotate는 onTransformEnd에서 새
+    // transform으로 별도 재계산.
+    const localBounds = useMemo(
+        () => computeLocalBounds(shapeProps),
+        // pathData(parametric/path) 또는 data(legacy) 중 하나가 source.
+        // scaleX/scaleY/rotation 변경 시 bounds 박스 자체가 회전·확장되므로
+        // 모두 deps.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+        [shapeProps.pathData, shapeProps.data, shapeProps.scaleX, shapeProps.scaleY, shapeProps.rotation, shapeProps.width, shapeProps.height, shapeProps.radius]
+    );
+
     const commonProps = {
         ...shapeProps,
         ref: (node) => {
@@ -212,11 +247,36 @@ const ShapeObject = ({ shapeProps, isSelected, onSelect, onRequestSpecEdit, onCh
         // Konva는 onDblClick(마우스)과 onDblTap(터치)을 별도로 디스패치한다.
         onDblClick: onRequestSpecEdit,
         onDblTap: onRequestSpecEdit,
+        // 4방향 캔버스 경계 clamp:
+        //   - left:  shape의 left bound가 x=0 이상 (필름 왼쪽 너머 X)
+        //   - right: shape의 right bound가 FILM_WIDTH_MM 이하 (필름 오른쪽 너머 X)
+        //   - top:   shape의 top bound가 y=0 이상 (필름 위쪽 너머 X)
+        //   - bottom: free — 필름은 길이 방향 무한 롤이라 캔버스가 자동 확장
+        //
+        // **단위 변환 주의**: Konva dragBoundFunc의 pos는 "absolute"(stage
+        // 픽셀 좌표)다. 우리 도형은 <Group x=offsetX*scale scaleX=scale> 안에
+        // 그려져 group 좌표는 mm. localBounds도 mm 단위라 단위가 섞이면
+        // 비대칭 오차(X축에서 좌측 느슨/우측 빡빡) 발생. 부모(Group)의
+        // getAbsoluteTransform()으로 stage↔group 좌표 정확히 변환 후 mm에서
+        // clamp, 다시 stage 좌표로 되돌려 반환.
         dragBoundFunc: (pos) => {
-            return {
-                x: pos.x,
-                y: Math.max(0, pos.y)
-            };
+            const node = shapeRef.current;
+            const parent = node?.getParent();
+            if (!node || !parent) {
+                // 안전망: ref 없을 땐 단순 clamp (단위 섞임 무시)
+                return {
+                    x: pos.x,
+                    y: Math.max(0, pos.y),
+                };
+            }
+            // Stage 절대 좌표(px) → 부모(Group) local 좌표(mm)
+            const inv = parent.getAbsoluteTransform().copy().invert();
+            const local = inv.point({ x: pos.x, y: pos.y });
+            // mm 공간에서 clamp
+            const clampedX = Math.max(-localBounds.left, Math.min(local.x, FILM_WIDTH_MM - localBounds.right));
+            const clampedY = Math.max(-localBounds.top, local.y);
+            // 다시 stage 절대 좌표로
+            return parent.getAbsoluteTransform().point({ x: clampedX, y: clampedY });
         },
         onDragEnd: (e) => {
             onChange({
@@ -231,13 +291,30 @@ const ShapeObject = ({ shapeProps, isSelected, onSelect, onRequestSpecEdit, onCh
             // 고정하면서 node.x/y도 함께 이동시킨다. x/y를 같이 저장하지 않으면
             // React state는 stale 좌표를 갖게 되고, 합치기·DXF 등 좌표 의존
             // 연산이 어긋난다(특히 합쳐진 결과의 bounds.center 위치).
+            const nextScaleX = node.scaleX();
+            const nextScaleY = node.scaleY();
+            const nextRotation = node.rotation();
+            // resize/rotate가 끝나면 bounds 박스가 변했으므로 새 transform으로
+            // bounds 재계산해 x/y를 캔버스 안으로 clamp. resize 중에는 자유롭게
+            // 동작하되 commit 시점에 안쪽으로 snap — UX/구현 단순함의 균형.
+            const next = computeLocalBounds({
+                ...shapeProps,
+                scaleX: nextScaleX,
+                scaleY: nextScaleY,
+                rotation: nextRotation,
+            });
+            const clampedX = Math.max(-next.left, Math.min(node.x(), FILM_WIDTH_MM - next.right));
+            const clampedY = Math.max(-next.top, node.y());
+            // node에도 즉시 반영해 commit 시점에 시각적 jump 없이 자연스레 snap.
+            node.x(clampedX);
+            node.y(clampedY);
             onChange({
                 ...shapeProps,
-                x: node.x(),
-                y: node.y(),
-                rotation: node.rotation(),
-                scaleX: node.scaleX(),
-                scaleY: node.scaleY(),
+                x: clampedX,
+                y: clampedY,
+                rotation: nextRotation,
+                scaleX: nextScaleX,
+                scaleY: nextScaleY,
             });
         },
         // Apply stored scale explicitly (legacy shapes may have non-1 scale)
