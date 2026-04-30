@@ -86,6 +86,9 @@ const AddShapeSection = ({ onRequestShape }) => (
                 </button>
             ))}
         </div>
+        <div className="section-hint">
+            * 추가된 도형을 <b>더블클릭</b>하면 크기·세부 옵션을 편집할 수 있어요.
+        </div>
     </div>
 );
 
