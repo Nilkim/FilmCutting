@@ -298,7 +298,7 @@ const ShapeObject = ({ shapeProps, isSelected, onSelect, onRequestSpecEdit, onCh
     return ShapeComponent;
 };
 
-const DrawingCanvas = ({ selectedFilm, shapes, setShapes, activeShapeId, setActiveShapeId, onRequestSpecEdit, onShapeChange, maxLength, onDeleteShape }) => {
+const DrawingCanvas = ({ selectedFilm, shapes, setShapes, activeShapeId, setActiveShapeId, onRequestSpecEdit, maxLength, onDeleteShape }) => {
     const containerRef = useRef();
     const trRef = useRef();
     const selectedNodeRef = useRef(null);
@@ -323,6 +323,29 @@ const DrawingCanvas = ({ selectedFilm, shapes, setShapes, activeShapeId, setActi
             trRef.current.getLayer()?.batchDraw();
         }
     }, [activeShapeId, shapes]);
+
+    // 모바일 빈 캔버스에서 페이지 세로 스크롤을 살리기 위해 Konva가
+    // .konvajs-content / canvas에 박는 inline `touch-action: none`을
+    // setProperty('important')로 강제 override한다. CSS의 !important만으론
+    // Konva가 동일하게 inline !important로 박을 수 있어 stylesheet가 지는
+    // 케이스가 있음 — JS로 inline !important를 직접 박아 cascade에서
+    // 마지막에 적용되는 우리 값이 이기게 함. stageSize가 바뀔 때마다
+    // 다시 적용해 Konva가 redraw 중 다시 set해도 우리 값이 살아남도록.
+    useEffect(() => {
+        if (!containerRef.current) return;
+        const isMobile = typeof window !== 'undefined'
+            && window.matchMedia('(max-width: 768px)').matches;
+        if (!isMobile) return;
+        const id = requestAnimationFrame(() => {
+            const targets = containerRef.current?.querySelectorAll(
+                '.canvas-scroll-area, .konvajs-content, .konvajs-content > canvas'
+            );
+            targets?.forEach((el) =>
+                el.style.setProperty('touch-action', 'pan-y', 'important')
+            );
+        });
+        return () => cancelAnimationFrame(id);
+    }, [stageSize]);
 
     // Calculate the billable bound (rounded up to nearest 500)
     const billableLength = Math.max(500, Math.ceil(Math.max(maxLength, 0) / 500) * 500);
@@ -378,15 +401,10 @@ const DrawingCanvas = ({ selectedFilm, shapes, setShapes, activeShapeId, setActi
         return () => window.removeEventListener('keydown', handleKeyDown);
     }, [activeShapeId, setShapes, setActiveShapeId, onDeleteShape]);
 
-    // 도형 변경은 부모(OrderPage)의 applyShapeChange로 위임. 부모에서 비균일
-    // 스케일 베이킹 등 추가 로직(필렛 정원 유지)을 처리하기 위함.
-    // onShapeChange 미제공 시(예: 다른 곳에서 재사용)에는 기존처럼 직접 setShapes.
-    const handleShapeChange = (id, newProps) => {
-        if (onShapeChange) {
-            onShapeChange(id, newProps);
-        } else {
-            setShapes((prev) => prev.map((s) => (s.id === id ? newProps : s)));
-        }
+    const handleShapeChange = (index, newProps) => {
+        const rects = shapes.slice();
+        rects[index] = newProps;
+        setShapes(rects);
     };
 
     // Double-click re-edit was removed — once a shape is placed, the user
@@ -530,7 +548,7 @@ const DrawingCanvas = ({ selectedFilm, shapes, setShapes, activeShapeId, setActi
                                     isSelected={shape.id === activeShapeId}
                                     onSelect={() => setActiveShapeId(shape.id)}
                                     onRequestSpecEdit={() => onRequestSpecEdit && onRequestSpecEdit(shape.id)}
-                                    onChange={(newProps) => handleShapeChange(shape.id, newProps)}
+                                    onChange={(newProps) => handleShapeChange(i, newProps)}
                                     canvasScale={scale}
                                     selectedFilm={selectedFilm}
                                     selectedNodeRef={selectedNodeRef}
