@@ -42,7 +42,11 @@ function StatusBadge({ status }) {
   return <span className={`status-badge ${info.cls}`}>{info.label}</span>;
 }
 
-export default function OrderLookupPage() {
+// embedded=true면 OrderPage의 모달 안에서 렌더되는 모드 — 작성 중인
+// 캔버스 상태를 유지하기 위해 라우트로 분리하지 않고 모달로 띄움.
+// 이때 재주문 선택은 navigate 대신 onSelectReorder 콜백으로 처리하고,
+// 풀페이지 wrapper(.lookup-page) 및 "돌아가기" 링크를 생략한다.
+export default function OrderLookupPage({ embedded = false, onClose, onSelectReorder } = {}) {
   const navigate = useNavigate();
   const [phone, setPhone] = useState('');
   const [loading, setLoading] = useState(false);
@@ -76,6 +80,14 @@ export default function OrderLookupPage() {
   };
 
   const handleReorder = (order) => {
+    // 모달 모드: OrderPage의 콜백을 호출해 setSelectedFilm/setShapes 직접
+    // 처리. 풀페이지 모드(deep-link redirect 후 fallback): 기존 navigate
+    // state 흐름 유지 — 현재는 redirect로 이 코드 경로에 도달하지 않지만,
+    // 향후 standalone 진입이 다시 필요해질 수 있으므로 보존.
+    if (embedded && onSelectReorder) {
+      onSelectReorder(order);
+      return;
+    }
     navigate('/order', {
       state: {
         reorderFrom: {
@@ -87,9 +99,8 @@ export default function OrderLookupPage() {
     });
   };
 
-  return (
-    <div className="lookup-page">
-      <div className="lookup-container">
+  const inner = (
+    <div className="lookup-container">
         <div className="lookup-header">
           <h1>주문 조회</h1>
           <p>주문 시 입력한 전화번호로 주문 내역을 확인할 수 있습니다.</p>
@@ -157,12 +168,20 @@ export default function OrderLookupPage() {
           </div>
         )}
 
-        <div style={{ textAlign: 'center' }}>
-          <Link to="/order" className="back-link">
-            ← 새 주문 작성으로 돌아가기
-          </Link>
-        </div>
+        {!embedded && (
+          <div style={{ textAlign: 'center' }}>
+            <Link to="/order" className="back-link">
+              ← 새 주문 작성으로 돌아가기
+            </Link>
+          </div>
+        )}
       </div>
-    </div>
   );
+
+  if (embedded) {
+    // 모달 안에서는 풀페이지 wrapper(.lookup-page) 없이 바로 렌더.
+    // modal-content가 자체 padding/배경을 제공하므로 중복 회피.
+    return inner;
+  }
+  return <div className="lookup-page">{inner}</div>;
 }
