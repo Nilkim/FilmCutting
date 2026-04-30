@@ -377,6 +377,48 @@ const DrawingCanvas = ({ selectedFilm, shapes, setShapes, activeShapeId, setActi
         }
     };
 
+    // 모바일 빈 캔버스 영역에서 페이지 세로 스크롤을 직접 구현.
+    // touch-action: pan-y만으론 일부 모바일 Chrome 환경에서 Konva가
+    // 첫 touchstart에 e.preventDefault()를 호출하면 native pan이 무력화되는
+    // 케이스가 있어, window.scrollBy로 직접 스크롤하는 우회 경로 추가.
+    // 도형 위 터치는 Konva drag가 그대로 가져가므로 충돌 없음.
+    // momentum scroll(관성) 효과는 없지만 "스크롤 자체가 안 되는 것"보단 나음.
+    const touchScrollState = useRef(null);
+    const handleStageTouchStart = (e) => {
+        checkDeselect(e);
+        if (typeof window === 'undefined') return;
+        if (!window.matchMedia('(max-width: 768px)').matches) return;
+        const touches = e.evt.touches;
+        if (!touches || touches.length !== 1) {
+            touchScrollState.current = null;
+            return;
+        }
+        const target = e.target;
+        const isEmpty = target === target.getStage() || target.name() === 'background';
+        if (isEmpty) {
+            touchScrollState.current = {
+                startY: touches[0].clientY,
+                startScrollY: window.scrollY,
+            };
+        } else {
+            touchScrollState.current = null;
+        }
+    };
+    const handleStageTouchMove = (e) => {
+        if (!touchScrollState.current) return;
+        const touches = e.evt.touches;
+        if (!touches || touches.length !== 1) {
+            touchScrollState.current = null;
+            return;
+        }
+        const dy = touches[0].clientY - touchScrollState.current.startY;
+        // 손가락 위로 → dy 음수 → 페이지 아래로(스크롤 위치 증가)
+        window.scrollTo(0, touchScrollState.current.startScrollY - dy);
+    };
+    const handleStageTouchEnd = () => {
+        touchScrollState.current = null;
+    };
+
     // Del/Backspace to delete selected shape — with input-focus guard
     useEffect(() => {
         const handleKeyDown = (e) => {
@@ -452,7 +494,10 @@ const DrawingCanvas = ({ selectedFilm, shapes, setShapes, activeShapeId, setActi
                     width={stageSize.width}
                     height={virtualCanvasHeight * scale}
                     onMouseDown={checkDeselect}
-                    onTouchStart={checkDeselect}
+                    onTouchStart={handleStageTouchStart}
+                    onTouchMove={handleStageTouchMove}
+                    onTouchEnd={handleStageTouchEnd}
+                    onTouchCancel={handleStageTouchEnd}
                 >
                     <Layer>
                         <Group x={offsetX * scale} y={0} scaleX={scale} scaleY={scale}>
