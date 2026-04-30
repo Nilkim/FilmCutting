@@ -183,17 +183,32 @@
     color: #991b1b;
 }
 
-/* 정원형 맞추기 — "곡선 부분" 입력행 바로 아래에 두는 보조 액션.
-   숫자 입력행과 같은 들여쓰기에 차분한 링크풍 버튼으로 너무 튀지
-   않도록. dashed border로 "리셋/도구" 성격을 시각화. */
+/* spec-row의 입력 셀 안에서 prefix 버튼 + input을 가로 정렬.
+   별도 행을 추가하지 않고 입력칸 앞쪽에 작은 도구 버튼을 두기 위함. */
+.spec-row-input-group {
+    display: flex;
+    align-items: stretch;
+    gap: 6px;
+    min-width: 0;
+}
+
+.spec-row-input-group input {
+    flex: 1;
+    min-width: 0;
+}
+
+/* 정원형 맞추기 — 입력칸 앞에 두는 아이콘 전용 버튼. dashed border로
+   "리셋/도구" 성격을 살짝 표시하고, 텍스트 없이 ↺ 글리프만으로 의미 전달. */
 .arch-reset-btn {
-    align-self: stretch;
-    padding: 6px 10px;
+    flex-shrink: 0;
+    width: 32px;
+    padding: 0;
     border: 1px dashed #94a3b8;
     border-radius: 6px;
     background: #f8fafc;
     color: #475569;
-    font-size: 0.82rem;
+    font-size: 1rem;
+    line-height: 1;
     cursor: pointer;
     transition: background 0.15s, border-color 0.15s, color 0.15s;
 }
