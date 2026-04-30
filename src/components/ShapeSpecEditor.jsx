@@ -139,6 +139,52 @@ function KindForm({ shape, onUpdate }) {
         regenerate({ ...params, [key]: value });
     };
 
+    // 정필렛 reset: 비균일 scale을 base에 굽고 scaleX/scaleY를 1로 리셋.
+    // 새 base에서 path가 재생성되므로 fillet/곡선 등 원형 요소가 정원형으로
+    // 복원됨. fillet 값(mm)은 그대로 — 사용자가 입력한 절대 mm를 컷팅
+    // 정확도 위해 보존(사용자 결정).
+    //
+    // **시각 크기 보존을 위한 inset 보정**:
+    // 사각형은 path bounds = params.width × params.height라 단순히
+    // newParams.width = shape.width * scaleX로 충분. 하지만 삼각형/별의
+    // buildFilletedPolygon은 vertex 안쪽으로 fillet을 굽혀 path bounds가
+    // params보다 작아짐(shape.width < params.width). 이 비율을 유지하지
+    // 않으면 bake할 때마다 시각 크기가 줄어드는 압축 효과 발생.
+    // 해결: 현재 ratio(shape.width / params.width)를 새 params에도 적용해
+    // generator가 큰 입력을 받고 inset 후에도 visualW에 가깝게 출력하도록.
+    const bakeScaleIntoBase = () => {
+        const sx = shape.scaleX || 1;
+        const sy = shape.scaleY || 1;
+        if (sx === 1 && sy === 1) return; // no-op
+        const visualW = (shape.width || 0) * sx;
+        const visualH = (shape.height || 0) * sy;
+        const ratioW = (shape.width && params.width) ? shape.width / params.width : 1;
+        const ratioH = (shape.height && params.height) ? shape.height / params.height : 1;
+        const newParams = {
+            ...params,
+            width: ratioW > 0 ? visualW / ratioW : visualW,
+            height: ratioH > 0 ? visualH / ratioH : visualH,
+        };
+        const requestId = ++latestRequestRef.current;
+        generateForKind(kind, newParams)
+            .then((g) => {
+                if (latestRequestRef.current !== requestId) return;
+                onUpdate({
+                    params: newParams,
+                    pathData: g.pathData,
+                    width: g.width,
+                    height: g.height,
+                    scaleX: 1,
+                    scaleY: 1,
+                });
+            })
+            .catch(() => {});
+    };
+
+    // ↺를 둘러싼 동작이 비균일 scale 존재 시에만 의미 있음 — 그 외엔
+    // 버튼 시각적으로 dim 처리하지만 클릭은 no-op이라 안전.
+    const canBake = (shape.scaleX || 1) !== 1 || (shape.scaleY || 1) !== 1;
+
     // Missing glyphs detection (text only). Re-runs whenever font, weight,
     // or text changes so the warning stays accurate as the user swaps fonts.
     const [missingGlyphs, setMissingGlyphs] = useState([]);
@@ -169,13 +215,25 @@ function KindForm({ shape, onUpdate }) {
                 />
             )}
             {(kind === 'rect' || kind === 'triangle') && (
-                <FilletField params={params} onUpdate={updateParam} />
+                <FilletField
+                    params={params}
+                    onUpdate={updateParam}
+                    onResetFillet={canBake ? bakeScaleIntoBase : null}
+                />
             )}
             {kind === 'star' && (
-                <StarFields params={params} onUpdate={updateParam} />
+                <StarFields
+                    params={params}
+                    onUpdate={updateParam}
+                    onResetFillet={canBake ? bakeScaleIntoBase : null}
+                />
             )}
             {kind === 'bubble' && (
-                <BubbleFields params={params} onUpdate={updateParam} />
+                <BubbleFields
+                    params={params}
+                    onUpdate={updateParam}
+                    onResetFillet={canBake ? bakeScaleIntoBase : null}
+                />
             )}
             {kind === 'arch' && (
                 <ArchFields
@@ -184,6 +242,7 @@ function KindForm({ shape, onUpdate }) {
                     scaleX={shape.scaleX || 1}
                     scaleY={shape.scaleY || 1}
                     baseWidth={shape.width || params.width}
+                    onResetFillet={canBake ? bakeScaleIntoBase : null}
                 />
             )}
             {/* circle has no extras */}
@@ -332,7 +391,25 @@ function TextKindFields({ params, onUpdate, missingGlyphs }) {
     );
 }
 
-function FilletField({ params, onUpdate }) {
+// 정필렛 reset 버튼 — fillet이 있는 모든 도형에서 공유.
+// 클릭 시 비균일 scale을 base에 굽고 scaleX/scaleY를 1로 리셋해 fillet이
+// 정원형으로 복원됨. onResetFillet이 null/undefined면 렌더 안 함(scale이
+// 모두 1인 상태 = 베이크 의미 없음).
+function FilletResetButton({ onClick }) {
+    return (
+        <button
+            type="button"
+            className="arch-reset-btn"
+            onClick={onClick}
+            title="정필렛 — 비균일 scale을 base에 굽고 정원형 fillet 복원"
+            aria-label="정필렛으로 맞추기"
+        >
+            ↺
+        </button>
+    );
+}
+
+function FilletField({ params, onUpdate, onResetFillet }) {
     return (
         <NumberRow
             label="필렛 (mm)"
@@ -342,11 +419,12 @@ function FilletField({ params, onUpdate }) {
                 const clamped = clampFillet(v, params.width, params.height);
                 onUpdate('fillet', clamped);
             }}
+            prefix={onResetFillet ? <FilletResetButton onClick={onResetFillet} /> : undefined}
         />
     );
 }
 
-function StarFields({ params, onUpdate }) {
+function StarFields({ params, onUpdate, onResetFillet }) {
     return (
         <>
             <NumberRow
@@ -376,12 +454,13 @@ function StarFields({ params, onUpdate }) {
                 value={params.fillet}
                 min={0}
                 onCommit={(v) => onUpdate('fillet', v)}
+                prefix={onResetFillet ? <FilletResetButton onClick={onResetFillet} /> : undefined}
             />
         </>
     );
 }
 
-function BubbleFields({ params, onUpdate }) {
+function BubbleFields({ params, onUpdate, onResetFillet }) {
     return (
         <>
             <NumberRow
@@ -405,12 +484,13 @@ function BubbleFields({ params, onUpdate }) {
                 value={params.fillet}
                 min={0}
                 onCommit={(v) => onUpdate('fillet', v)}
+                prefix={onResetFillet ? <FilletResetButton onClick={onResetFillet} /> : undefined}
             />
         </>
     );
 }
 
-function ArchFields({ params, onUpdate, scaleX = 1, scaleY = 1, baseWidth = 0 }) {
+function ArchFields({ params, onUpdate, scaleX = 1, scaleY = 1, baseWidth = 0, onResetFillet }) {
     // archHeight를 "세로 (mm)"와 동일한 단위(스케일 적용된 시각 mm)로 표시.
     // 사용자가 Transform 섹션에서 세로를 바꾸면 scaleY가 바뀌고, 이 파생값
     // displayedArchHeight도 자동으로 갱신되어 두 값의 비율이 일관되게 보인다.
@@ -458,6 +538,7 @@ function ArchFields({ params, onUpdate, scaleX = 1, scaleY = 1, baseWidth = 0 })
                 value={params.fillet}
                 min={0}
                 onCommit={(v) => onUpdate('fillet', v)}
+                prefix={onResetFillet ? <FilletResetButton onClick={onResetFillet} /> : undefined}
             />
         </>
     );
