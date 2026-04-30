@@ -18,6 +18,9 @@
 - `src/hooks/useReorderLoader.js` — 재주문 도면 자동 로드
 - `src/utils/dxfExport.js` — makerjs + Paper.js 기반 DXF 변환
 - `src/utils/shapeBoolean.js` — 도형 합치기/빼기 (Paper.js)
+- `src/utils/shapeBake.js` — transform 시 자동 베이킹 (비균일 scale을 base에 굽고 fillet/곡선 ratio 유지)
+- `src/utils/shapeGenerators.js` — 각 도형 종류별 path 생성 (rect/circle/triangle/star/bubble/arch/text)
+- `src/utils/shapeRegistry.js` — KIND_LABELS, DEFAULT_PARAMS, generateForKind 분기
 - `src/lib/supabase.js` — 클라이언트 인스턴스
 - `supabase/schema.sql` — 초기 스키마
 - `supabase/lookup.sql` — 전화번호 기반 주문 조회 RPC
