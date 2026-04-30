@@ -15,7 +15,7 @@ import PricePanel from '../components/PricePanel';
 import DrawingCanvas from '../components/DrawingCanvas';
 import ShapeSpecEditor from '../components/ShapeSpecEditor';
 import OrderLookupPage from './OrderLookupPage';
-import { createDefaultShapeData } from '../utils/shapeRegistry';
+import { createDefaultShapeData, generateForKind } from '../utils/shapeRegistry';
 
 // Tracks viewport breakpoint so the spec editor can switch between an
 // inline panel (desktop, docked in the right column) and a fullscreen modal
@@ -232,6 +232,68 @@ function OrderPage() {
     setShapes((prev) => prev.map((s) =>
       s.id === activeShapeId ? { ...s, ...patch } : s
     ));
+  };
+
+  // 캔버스에서 도형 transform이 끝났을 때(onTransformEnd) 자동 베이크.
+  // parametric 도형(kind+params 보유)이고 scaleX/Y가 1이 아니면 비균일
+  // scale을 base에 굽고 path 재생성, scaleX/Y를 1로 리셋한다. fillet/곡선
+  // 등 원형 요소가 자동으로 정원형 유지되고, archHeight 같은 비례 dimension
+  // 도 base에 포함되어 시각 비율 보존.
+  //
+  // 베이크 안 하는 케이스:
+  //   - non-parametric (boolean으로 합쳐진 path 등 — kind/params 없음)
+  //   - scaleX === scaleY === 1 (단순 위치/회전 변경)
+  //   - text (size 파라미터로 자체 비율 관리, 별도 정책)
+  //
+  // **시각 크기 보존 — inset 보정**:
+  //   삼각형/별의 buildFilletedPolygon은 vertex 안쪽으로 fillet을 굽혀
+  //   path bounds < params. 그대로 두면 베이크할 때마다 시각 크기가
+  //   줄어드는 압축 효과 발생. 현재 ratio(shape.width / params.width)를
+  //   유지하면서 newParams.width = visualW / ratio로 보정해 generator가
+  //   inset 후에도 visualW 근처를 출력하도록.
+  //
+  // **fillet 보존**: fillet 값(mm)은 그대로 — 사용자 입력 절대 mm를 컷팅
+  //   정확도 위해 보존.
+  // **archHeight 베이크**: archHeight는 비례 변환 (params.archHeight * sy)
+  //   해서 시각 비율(반원/얕은 돔/뾰족 총알머리) 유지.
+  const applyShapeChange = async (shapeId, nextShape) => {
+    const current = shapes.find((s) => s.id === shapeId);
+    if (!current) return;
+    const sx = nextShape.scaleX || 1;
+    const sy = nextShape.scaleY || 1;
+    const isParametric = nextShape.kind && nextShape.params && nextShape.kind !== 'text';
+    if (!isParametric || (sx === 1 && sy === 1)) {
+      setShapes((prev) => prev.map((s) => (s.id === shapeId ? nextShape : s)));
+      return;
+    }
+    const ratioW = current.width && current.params?.width ? current.width / current.params.width : 1;
+    const ratioH = current.height && current.params?.height ? current.height / current.params.height : 1;
+    const visualW = (current.width || 0) * sx;
+    const visualH = (current.height || 0) * sy;
+    const newParams = {
+      ...nextShape.params,
+      width: ratioW > 0 ? visualW / ratioW : visualW,
+      height: ratioH > 0 ? visualH / ratioH : visualH,
+    };
+    if (nextShape.params.archHeight !== undefined) {
+      newParams.archHeight = (nextShape.params.archHeight || 0) * sy;
+    }
+    try {
+      const g = await generateForKind(nextShape.kind, newParams);
+      setShapes((prev) => prev.map((s) => (s.id === shapeId ? {
+        ...nextShape,
+        params: newParams,
+        pathData: g.pathData,
+        width: g.width,
+        height: g.height,
+        scaleX: 1,
+        scaleY: 1,
+      } : s)));
+    } catch (err) {
+      console.error('shape bake failed:', err);
+      // 폴백: 베이크 실패 시 기존 단순 set
+      setShapes((prev) => prev.map((s) => (s.id === shapeId ? nextShape : s)));
+    }
   };
 
   const handleMergeShapes = (type) => {
@@ -569,6 +631,7 @@ function OrderPage() {
                 activeShapeId={activeShapeId}
                 setActiveShapeId={handleSelectShape}
                 onRequestSpecEdit={handleRequestSpecEdit}
+                onShapeChange={applyShapeChange}
                 maxLength={maxLength}
                 onDeleteShape={handleDeleteShape}
               />
