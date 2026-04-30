@@ -375,7 +375,7 @@ const ShapeObject = ({ shapeProps, isSelected, onSelect, onRequestSpecEdit, onCh
     return ShapeComponent;
 };
 
-const DrawingCanvas = ({ selectedFilm, shapes, setShapes, activeShapeId, setActiveShapeId, onRequestSpecEdit, maxLength, onDeleteShape }) => {
+const DrawingCanvas = ({ selectedFilm, shapes, setShapes, activeShapeId, setActiveShapeId, onRequestSpecEdit, onShapeChange, maxLength, onDeleteShape }) => {
     const containerRef = useRef();
     const trRef = useRef();
     const selectedNodeRef = useRef(null);
@@ -520,10 +520,15 @@ const DrawingCanvas = ({ selectedFilm, shapes, setShapes, activeShapeId, setActi
         return () => window.removeEventListener('keydown', handleKeyDown);
     }, [activeShapeId, setShapes, setActiveShapeId, onDeleteShape]);
 
-    const handleShapeChange = (index, newProps) => {
-        const rects = shapes.slice();
-        rects[index] = newProps;
-        setShapes(rects);
+    // shape 변경의 단일 진입점. 부모(OrderPage)의 applyShapeChange가
+    // 비균일 scale 자동 베이크 등 추가 처리를 하므로 그쪽으로 위임.
+    // onShapeChange 미제공 시(다른 곳에서 재사용) 폴백으로 직접 setShapes.
+    const handleShapeChange = (id, newProps) => {
+        if (onShapeChange) {
+            onShapeChange(id, newProps);
+        } else {
+            setShapes((prev) => prev.map((s) => (s.id === id ? newProps : s)));
+        }
     };
 
     // Double-click re-edit was removed — once a shape is placed, the user
@@ -670,7 +675,7 @@ const DrawingCanvas = ({ selectedFilm, shapes, setShapes, activeShapeId, setActi
                                     isSelected={shape.id === activeShapeId}
                                     onSelect={() => setActiveShapeId(shape.id)}
                                     onRequestSpecEdit={() => onRequestSpecEdit && onRequestSpecEdit(shape.id)}
-                                    onChange={(newProps) => handleShapeChange(i, newProps)}
+                                    onChange={(newProps) => handleShapeChange(shape.id, newProps)}
                                     canvasScale={scale}
                                     selectedFilm={selectedFilm}
                                     selectedNodeRef={selectedNodeRef}
