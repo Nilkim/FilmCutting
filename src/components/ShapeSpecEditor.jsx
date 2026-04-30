@@ -167,7 +167,11 @@ function KindForm({ shape, onUpdate }) {
                 <BubbleFields params={params} onUpdate={updateParam} />
             )}
             {kind === 'arch' && (
-                <ArchFields params={params} onUpdate={updateParam} />
+                <ArchFields
+                    params={params}
+                    onUpdate={updateParam}
+                    scaleY={shape.scaleY || 1}
+                />
             )}
             {/* circle has no extras */}
         </div>
@@ -393,14 +397,25 @@ function BubbleFields({ params, onUpdate }) {
     );
 }
 
-function ArchFields({ params, onUpdate }) {
+function ArchFields({ params, onUpdate, scaleY = 1 }) {
+    // archHeight를 "세로 (mm)"와 동일한 단위(스케일 적용된 시각 mm)로 표시.
+    // 사용자가 Transform 섹션에서 세로를 바꾸면 scaleY가 바뀌고, 이 파생값
+    // displayedArchHeight도 자동으로 갱신되어 두 값의 비율이 일관되게 보인다.
+    // commit 시에는 다시 base 단위로 환산해 저장 — base를 기준으로 path가
+    // 재생성되어야 곡선부/본체 비율 계산(반타원 rx=w/2, ry=archHeight)이
+    // 정확하기 때문.
+    const sy = scaleY > 0 ? scaleY : 1;
+    const displayedArchHeight = (params.archHeight || 0) * sy;
     return (
         <>
             <NumberRow
-                label="아치 높이 (mm)"
-                value={params.archHeight}
+                label="곡선 부분 (mm)"
+                value={Math.round(displayedArchHeight)}
                 min={0}
-                onCommit={(v) => onUpdate('archHeight', Math.max(0, v))}
+                onCommit={(v) => {
+                    const base = Math.max(0, v / sy);
+                    onUpdate('archHeight', base);
+                }}
             />
             <NumberRow
                 label="필렛 (mm)"
