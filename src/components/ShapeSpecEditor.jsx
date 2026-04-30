@@ -139,51 +139,10 @@ function KindForm({ shape, onUpdate }) {
         regenerate({ ...params, [key]: value });
     };
 
-    // 정필렛 reset: 비균일 scale을 base에 굽고 scaleX/scaleY를 1로 리셋.
-    // 새 base에서 path가 재생성되므로 fillet/곡선 등 원형 요소가 정원형으로
-    // 복원됨. fillet 값(mm)은 그대로 — 사용자가 입력한 절대 mm를 컷팅
-    // 정확도 위해 보존(사용자 결정).
-    //
-    // **시각 크기 보존을 위한 inset 보정**:
-    // 사각형은 path bounds = params.width × params.height라 단순히
-    // newParams.width = shape.width * scaleX로 충분. 하지만 삼각형/별의
-    // buildFilletedPolygon은 vertex 안쪽으로 fillet을 굽혀 path bounds가
-    // params보다 작아짐(shape.width < params.width). 이 비율을 유지하지
-    // 않으면 bake할 때마다 시각 크기가 줄어드는 압축 효과 발생.
-    // 해결: 현재 ratio(shape.width / params.width)를 새 params에도 적용해
-    // generator가 큰 입력을 받고 inset 후에도 visualW에 가깝게 출력하도록.
-    const bakeScaleIntoBase = () => {
-        const sx = shape.scaleX || 1;
-        const sy = shape.scaleY || 1;
-        if (sx === 1 && sy === 1) return; // no-op
-        const visualW = (shape.width || 0) * sx;
-        const visualH = (shape.height || 0) * sy;
-        const ratioW = (shape.width && params.width) ? shape.width / params.width : 1;
-        const ratioH = (shape.height && params.height) ? shape.height / params.height : 1;
-        const newParams = {
-            ...params,
-            width: ratioW > 0 ? visualW / ratioW : visualW,
-            height: ratioH > 0 ? visualH / ratioH : visualH,
-        };
-        const requestId = ++latestRequestRef.current;
-        generateForKind(kind, newParams)
-            .then((g) => {
-                if (latestRequestRef.current !== requestId) return;
-                onUpdate({
-                    params: newParams,
-                    pathData: g.pathData,
-                    width: g.width,
-                    height: g.height,
-                    scaleX: 1,
-                    scaleY: 1,
-                });
-            })
-            .catch(() => {});
-    };
-
-    // ↺를 둘러싼 동작이 비균일 scale 존재 시에만 의미 있음 — 그 외엔
-    // 버튼 시각적으로 dim 처리하지만 클릭은 no-op이라 안전.
-    const canBake = (shape.scaleX || 1) !== 1 || (shape.scaleY || 1) !== 1;
+    // 정필렛/정원형 ↺ 수동 버튼은 제거됨 — 자동 베이크가 OrderPage의
+    // applyShapeChange에서 onTransformEnd 시점에 처리한다. 사용자가 도형을
+    // resize하면 즉시 base가 갱신되고 scaleX/Y는 1로 리셋되어 fillet/곡선
+    // 비율이 자동 보존됨.
 
     // Missing glyphs detection (text only). Re-runs whenever font, weight,
     // or text changes so the warning stays accurate as the user swaps fonts.
@@ -215,34 +174,19 @@ function KindForm({ shape, onUpdate }) {
                 />
             )}
             {(kind === 'rect' || kind === 'triangle') && (
-                <FilletField
-                    params={params}
-                    onUpdate={updateParam}
-                    onResetFillet={canBake ? bakeScaleIntoBase : null}
-                />
+                <FilletField params={params} onUpdate={updateParam} />
             )}
             {kind === 'star' && (
-                <StarFields
-                    params={params}
-                    onUpdate={updateParam}
-                    onResetFillet={canBake ? bakeScaleIntoBase : null}
-                />
+                <StarFields params={params} onUpdate={updateParam} />
             )}
             {kind === 'bubble' && (
-                <BubbleFields
-                    params={params}
-                    onUpdate={updateParam}
-                    onResetFillet={canBake ? bakeScaleIntoBase : null}
-                />
+                <BubbleFields params={params} onUpdate={updateParam} />
             )}
             {kind === 'arch' && (
                 <ArchFields
                     params={params}
                     onUpdate={updateParam}
-                    scaleX={shape.scaleX || 1}
                     scaleY={shape.scaleY || 1}
-                    baseWidth={shape.width || params.width}
-                    onResetFillet={canBake ? bakeScaleIntoBase : null}
                 />
             )}
             {/* circle has no extras */}
@@ -391,40 +335,21 @@ function TextKindFields({ params, onUpdate, missingGlyphs }) {
     );
 }
 
-// 정필렛 reset 버튼 — fillet이 있는 모든 도형에서 공유.
-// 클릭 시 비균일 scale을 base에 굽고 scaleX/scaleY를 1로 리셋해 fillet이
-// 정원형으로 복원됨. onResetFillet이 null/undefined면 렌더 안 함(scale이
-// 모두 1인 상태 = 베이크 의미 없음).
-function FilletResetButton({ onClick }) {
-    return (
-        <button
-            type="button"
-            className="arch-reset-btn"
-            onClick={onClick}
-            title="정필렛 — 비균일 scale을 base에 굽고 정원형 fillet 복원"
-            aria-label="정필렛으로 맞추기"
-        >
-            ↺
-        </button>
-    );
-}
-
-function FilletField({ params, onUpdate, onResetFillet }) {
+function FilletField({ params, onUpdate }) {
     return (
         <NumberRow
-            label="필렛 (mm)"
+            label="둥근모서리"
             value={params.fillet}
             min={0}
             onCommit={(v) => {
                 const clamped = clampFillet(v, params.width, params.height);
                 onUpdate('fillet', clamped);
             }}
-            prefix={onResetFillet ? <FilletResetButton onClick={onResetFillet} /> : undefined}
         />
     );
 }
 
-function StarFields({ params, onUpdate, onResetFillet }) {
+function StarFields({ params, onUpdate }) {
     return (
         <>
             <NumberRow
@@ -450,17 +375,16 @@ function StarFields({ params, onUpdate, onResetFillet }) {
                 }}
             />
             <NumberRow
-                label="필렛 (mm)"
+                label="둥근모서리"
                 value={params.fillet}
                 min={0}
                 onCommit={(v) => onUpdate('fillet', v)}
-                prefix={onResetFillet ? <FilletResetButton onClick={onResetFillet} /> : undefined}
             />
         </>
     );
 }
 
-function BubbleFields({ params, onUpdate, onResetFillet }) {
+function BubbleFields({ params, onUpdate }) {
     return (
         <>
             <NumberRow
@@ -480,65 +404,40 @@ function BubbleFields({ params, onUpdate, onResetFillet }) {
                 onCommit={(v) => onUpdate('tailSize', v)}
             />
             <NumberRow
-                label="필렛 (mm)"
+                label="둥근모서리"
                 value={params.fillet}
                 min={0}
                 onCommit={(v) => onUpdate('fillet', v)}
-                prefix={onResetFillet ? <FilletResetButton onClick={onResetFillet} /> : undefined}
             />
         </>
     );
 }
 
-function ArchFields({ params, onUpdate, scaleX = 1, scaleY = 1, baseWidth = 0, onResetFillet }) {
+function ArchFields({ params, onUpdate, scaleY = 1 }) {
     // archHeight를 "세로 (mm)"와 동일한 단위(스케일 적용된 시각 mm)로 표시.
-    // 사용자가 Transform 섹션에서 세로를 바꾸면 scaleY가 바뀌고, 이 파생값
-    // displayedArchHeight도 자동으로 갱신되어 두 값의 비율이 일관되게 보인다.
-    // commit 시에는 다시 base 단위로 환산해 저장 — base를 기준으로 path가
-    // 재생성되어야 곡선부/본체 비율 계산(반타원 rx=w/2, ry=archHeight)이
-    // 정확하기 때문.
-    const sx = scaleX > 0 ? scaleX : 1;
+    // 자동 베이크가 onTransformEnd 시점에 scaleY를 1로 리셋하므로 보통
+    // displayedArchHeight === params.archHeight지만, 사용자가 캔버스 핸들을
+    // 잡고 있는 동안에는 scaleY가 1이 아닐 수 있어 그동안의 일관성 위해
+    // 유지. commit 시 base로 환산해 저장.
     const sy = scaleY > 0 ? scaleY : 1;
     const displayedArchHeight = (params.archHeight || 0) * sy;
-
-    // 정원형 버튼: 시각적 곡선부가 정확한 반원이 되도록 archHeight 재설정.
-    //   visual rx = (baseW/2) * scaleX
-    //   visual ry = baseArchHeight * scaleY
-    //   정원형 ⇔ rx == ry  ⇔  baseArchHeight = (baseW * scaleX) / (2 * scaleY)
-    // scaleX === scaleY인 일반 케이스에선 baseW/2로 단순화됨.
-    const setSemicircle = () => {
-        const newBase = (baseWidth * sx) / (2 * sy);
-        onUpdate('archHeight', Math.max(0, newBase));
-    };
 
     return (
         <>
             <NumberRow
-                label="곡선 부분 (mm)"
+                label="아치 높이"
                 value={Math.round(displayedArchHeight)}
                 min={0}
                 onCommit={(v) => {
                     const base = Math.max(0, v / sy);
                     onUpdate('archHeight', base);
                 }}
-                prefix={
-                    <button
-                        type="button"
-                        className="arch-reset-btn"
-                        onClick={setSemicircle}
-                        title="정원형 아치 (가로폭의 절반)"
-                        aria-label="정원형으로 맞추기"
-                    >
-                        ↺
-                    </button>
-                }
             />
             <NumberRow
-                label="필렛 (mm)"
+                label="둥근모서리"
                 value={params.fillet}
                 min={0}
                 onCommit={(v) => onUpdate('fillet', v)}
-                prefix={onResetFillet ? <FilletResetButton onClick={onResetFillet} /> : undefined}
             />
         </>
     );
