@@ -298,7 +298,7 @@ const ShapeObject = ({ shapeProps, isSelected, onSelect, onRequestSpecEdit, onCh
     return ShapeComponent;
 };
 
-const DrawingCanvas = ({ selectedFilm, shapes, setShapes, activeShapeId, setActiveShapeId, onRequestSpecEdit, maxLength, onDeleteShape }) => {
+const DrawingCanvas = ({ selectedFilm, shapes, setShapes, activeShapeId, setActiveShapeId, onRequestSpecEdit, onShapeChange, maxLength, onDeleteShape }) => {
     const containerRef = useRef();
     const trRef = useRef();
     const selectedNodeRef = useRef(null);
@@ -378,10 +378,15 @@ const DrawingCanvas = ({ selectedFilm, shapes, setShapes, activeShapeId, setActi
         return () => window.removeEventListener('keydown', handleKeyDown);
     }, [activeShapeId, setShapes, setActiveShapeId, onDeleteShape]);
 
-    const handleShapeChange = (index, newProps) => {
-        const rects = shapes.slice();
-        rects[index] = newProps;
-        setShapes(rects);
+    // 도형 변경은 부모(OrderPage)의 applyShapeChange로 위임. 부모에서 비균일
+    // 스케일 베이킹 등 추가 로직(필렛 정원 유지)을 처리하기 위함.
+    // onShapeChange 미제공 시(예: 다른 곳에서 재사용)에는 기존처럼 직접 setShapes.
+    const handleShapeChange = (id, newProps) => {
+        if (onShapeChange) {
+            onShapeChange(id, newProps);
+        } else {
+            setShapes((prev) => prev.map((s) => (s.id === id ? newProps : s)));
+        }
     };
 
     // Double-click re-edit was removed — once a shape is placed, the user
@@ -525,7 +530,7 @@ const DrawingCanvas = ({ selectedFilm, shapes, setShapes, activeShapeId, setActi
                                     isSelected={shape.id === activeShapeId}
                                     onSelect={() => setActiveShapeId(shape.id)}
                                     onRequestSpecEdit={() => onRequestSpecEdit && onRequestSpecEdit(shape.id)}
-                                    onChange={(newProps) => handleShapeChange(i, newProps)}
+                                    onChange={(newProps) => handleShapeChange(shape.id, newProps)}
                                     canvasScale={scale}
                                     selectedFilm={selectedFilm}
                                     selectedNodeRef={selectedNodeRef}
