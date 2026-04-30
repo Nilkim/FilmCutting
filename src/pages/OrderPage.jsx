@@ -165,6 +165,10 @@ function OrderPage() {
   const handleDeleteShape = (shapeId) => {
     setShapes((prev) => prev.filter((s) => s.id !== shapeId));
     setActiveShapeId(null);
+    // 모바일 시트에서 삭제한 경우 시트도 같이 닫는다. activeShape이 null이
+    // 되어 시트가 어차피 unmount되지만, dismissed 상태를 명시적으로 정리해
+    // 이후 새 도형을 더블탭했을 때의 동작을 일관되게 유지.
+    setSpecSheetDismissed(true);
   };
 
   // Live patch for the selected shape — used by ShapeSpecEditor for both
@@ -552,6 +556,7 @@ function OrderPage() {
                   <ShapeSpecEditor
                     shape={activeShape}
                     onUpdate={handleUpdateActiveShape}
+                    onDelete={() => handleDeleteShape(activeShape.id)}
                   />
                 </div>
               )}
@@ -591,6 +596,7 @@ function OrderPage() {
             <ShapeSpecEditor
               shape={activeShape}
               onUpdate={handleUpdateActiveShape}
+              onDelete={() => handleDeleteShape(activeShape.id)}
             />
           </div>
         </div>
