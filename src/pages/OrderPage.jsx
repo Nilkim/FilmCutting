@@ -15,7 +15,7 @@ import Sidebar from '../components/Sidebar';
 import PricePanel from '../components/PricePanel';
 import DrawingCanvas from '../components/DrawingCanvas';
 import ShapeSpecEditor from '../components/ShapeSpecEditor';
-import { createDefaultShapeData } from '../utils/shapeRegistry';
+import { createDefaultShapeData, generateForKind } from '../utils/shapeRegistry';
 
 // Tracks viewport breakpoint so the spec editor can switch between an
 // inline panel (desktop, docked in the right column) and a fullscreen modal
@@ -210,14 +210,93 @@ function OrderPage() {
     handleSelectShape(copy.id);
   };
 
+  // 도형 변경의 단일 진입점. 직접 setShapes를 호출하지 않고 이 함수로 일원화.
+  //
+  // 비균일 스케일 베이킹(bake):
+  //   parametric(kind+params 보유, text 제외) 도형의 scaleX/scaleY가 1이
+  //   아닌 값으로 "변경"되면, 그 스케일을 즉시 params.width/height(/archHeight)
+  //   에 흡수해 path를 새 base 치수로 재생성하고 scale을 1로 리셋한다.
+  //   이러면 필렛/곡선 등 원형 요소가 비례 변경 후에도 정원형으로 유지됨.
+  //   (그렇지 않으면 Konva의 scaleX≠scaleY 변환이 원호를 타원호로 일그러뜨림)
+  //
+  // bake 트리거 조건:
+  //   - parametric 도형
+  //   - patch가 scaleX 또는 scaleY를 "현재값과 다른" 값으로 바꿈 (단순 위치
+  //     이동이나 동일값 재할당은 제외)
+  //   - 새 스케일 값이 1이 아님 (scaleNonUnit)
+  //   - patch가 KindForm의 regen 산물이 아님 (params 참조 동일성으로 판별)
+  //
+  // 비-parametric(boolean으로 합쳐진 path)이나 text는 기존처럼 scale로
+  // 시각만 늘림 — 재구성 정보가 없거나 의미가 다르기 때문.
+  const applyShapeChange = (shapeId, patch) => {
+    const current = shapes.find((s) => s.id === shapeId);
+    if (!current) return;
+
+    const isParametric =
+      current.kind && current.kind !== 'text' && current.params;
+    const newSx =
+      patch.scaleX !== undefined ? patch.scaleX : (current.scaleX ?? 1);
+    const newSy =
+      patch.scaleY !== undefined ? patch.scaleY : (current.scaleY ?? 1);
+    const scaleChanged =
+      (patch.scaleX !== undefined && patch.scaleX !== (current.scaleX ?? 1)) ||
+      (patch.scaleY !== undefined && patch.scaleY !== (current.scaleY ?? 1));
+    const scaleNonUnit =
+      Math.abs(newSx - 1) > 1e-6 || Math.abs(newSy - 1) > 1e-6;
+    const isRegenPatch = patch.params && patch.params !== current.params;
+
+    if (!isParametric || isRegenPatch || !scaleChanged || !scaleNonUnit) {
+      setShapes((prev) =>
+        prev.map((s) => (s.id === shapeId ? { ...s, ...patch } : s))
+      );
+      return;
+    }
+
+    // 비균일/비-1 스케일을 base에 굽기.
+    const baseP = current.params;
+    const newParams = { ...baseP };
+    if (typeof baseP.width === 'number') newParams.width = baseP.width * newSx;
+    if (typeof baseP.height === 'number') newParams.height = baseP.height * newSy;
+    if (current.kind === 'arch' && typeof baseP.archHeight === 'number') {
+      newParams.archHeight = baseP.archHeight * newSy;
+    }
+
+    generateForKind(current.kind, newParams)
+      .then((g) => {
+        setShapes((prev) =>
+          prev.map((s) =>
+            s.id === shapeId
+              ? {
+                  ...s,
+                  ...patch,
+                  params: newParams,
+                  pathData: g.pathData,
+                  width: g.width,
+                  height: g.height,
+                  scaleX: 1,
+                  scaleY: 1,
+                }
+              : s
+          )
+        );
+      })
+      .catch((err) => {
+        console.error('도형 비례 정규화 실패:', err);
+        // fallback: 그냥 패치만 적용 (필렛이 타원형이 될 수 있지만 동작은 유지)
+        setShapes((prev) =>
+          prev.map((s) => (s.id === shapeId ? { ...s, ...patch } : s))
+        );
+      });
+  };
+
   // Live patch for the selected shape — used by ShapeSpecEditor for both
   // kind-form regen ({ params, pathData, width, height }) and transform
-  // edits ({ scaleX | scaleY | rotation }). Just merges.
+  // edits ({ scaleX | scaleY | rotation }). Routes through applyShapeChange
+  // so non-uniform scale changes get baked into params (preserving circular
+  // fillets etc.).
   const handleUpdateActiveShape = (patch) => {
     if (!activeShapeId) return;
-    setShapes((prev) => prev.map((s) =>
-      s.id === activeShapeId ? { ...s, ...patch } : s
-    ));
+    applyShapeChange(activeShapeId, patch);
   };
 
   const handleMergeShapes = (type) => {
@@ -557,6 +636,7 @@ function OrderPage() {
                 activeShapeId={activeShapeId}
                 setActiveShapeId={handleSelectShape}
                 onRequestSpecEdit={handleRequestSpecEdit}
+                onShapeChange={applyShapeChange}
                 maxLength={maxLength}
                 onDeleteShape={handleDeleteShape}
               />
