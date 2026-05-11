@@ -24,7 +24,7 @@ export const KIND_LABELS = {
     star: '별',
     bubble: '말풍선',
     arch: '아치',
-    mirror: '거울',
+    mirror: '조약돌',
     text: '텍스트',
 };
 
