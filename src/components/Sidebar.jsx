@@ -16,6 +16,24 @@ const ArchIcon = ({ size = 24 }) => (
         <path d="M4 21 L4 11 A8 8 0 0 1 20 11 L20 21 Z" />
     </svg>
 );
+
+// Inline mirror/pebble icon — 비대칭 organic blob. lucide에 없어서 직접 작성.
+// 24x24 viewBox 안에서 비정형 타원 형태로, generator의 anchor 배치와 비슷한
+// 살짝 비대칭 4-bezier closed loop.
+const MirrorIcon = ({ size = 24 }) => (
+    <svg
+        width={size}
+        height={size}
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+    >
+        <path d="M2.5 11.5 C 3 5, 9 3, 13 4 C 19 5, 21.5 9, 21.5 13 C 21 19, 15 21, 11 20 C 5 19, 2 17, 2.5 11.5 Z" />
+    </svg>
+);
 import './Sidebar.css';
 
 const TOOLS = [
@@ -25,6 +43,7 @@ const TOOLS = [
     { id: 'star', label: '별표', icon: <Star size={24} /> },
     { id: 'bubble', label: '말풍선', icon: <MessageSquare size={24} /> },
     { id: 'arch', label: '아치', icon: <ArchIcon size={24} /> },
+    { id: 'mirror', label: '거울', icon: <MirrorIcon size={24} /> },
     { id: 'text', label: '텍스트', icon: <Type size={24} /> },
 ];
 
