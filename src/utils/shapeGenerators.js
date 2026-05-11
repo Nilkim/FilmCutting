@@ -425,65 +425,57 @@ export function generateArchPath({ width, height, archHeight = 0, fillet = 0 }) 
 }
 
 // ------------------------------------------------------------------
-// Mirror — 비대칭 pebble/blob 모양의 비정형 타원
+// Mirror/Pebble — 비대칭 조약돌 모양의 비정형 타원
 // ------------------------------------------------------------------
-// 거울 등 organic 형태의 인테리어 오브제 reference. fillet/추가 param
-// 없이 width/height만으로 모양 결정. 4-cubic-bezier closed loop으로 표현.
+// 거울/조약돌 등 organic 형태의 인테리어 오브제 reference. fillet/추가
+// param 없이 width/height만으로 모양 결정.
 //
-// 좌측이 살짝 좁고 우측이 둥글며, 위/아래도 살짝 비대칭이라 정확한
-// ellipse와는 다른 자연스러운 pebble 느낌을 줌. 비균일 scale을 그대로
-// 받아 원하는 비율로 늘리면 됨 (bakeIfNeeded의 제외 대상 — fillet 없음).
+// 구현 방식: 8개 anchor 점을 ellipse 둘레에 배치하되 각 각도마다 다른
+// radial factor를 곱해 비대칭. Paper.js의 path.smooth({type:'catmull-rom'})로
+// anchor들을 부드러운 spline으로 자동 연결 — 손으로 bezier control point
+// 잡는 부담 없이 자연스러운 곡률 확보.
+//
+// 비균일 scale을 그대로 받아 다양한 비율의 조약돌을 만들 수 있음
+// (bakeIfNeeded의 제외 대상 — fillet 없음).
 export function generateMirrorPath({ width, height }) {
     ensurePaperSetup();
     const w = Math.abs(width);
     const h = Math.abs(height);
 
-    // 4개 주요 anchor 점 (normalized × w/h). 시계방향 진행.
-    // 의도적 비대칭으로 pebble 느낌:
-    //   - top은 살짝 우측으로 치우침
-    //   - right는 정확히 중앙 약간 아래
-    //   - bottom은 살짝 좌측으로 치우침
-    //   - left는 살짝 위로 치우침
-    const P = [
-        { x: -0.50 * w, y: -0.05 * h },  // 0: left
-        { x:  0.05 * w, y: -0.48 * h },  // 1: top  (slightly right)
-        { x:  0.50 * w, y:  0.02 * h },  // 2: right
-        { x: -0.05 * w, y:  0.48 * h },  // 3: bottom (slightly left)
-    ];
+    // 8개 anchor: 각도 0°(우)부터 45° 간격, 반시계방향(Konva는 y-down이라
+    // 화면상 시계방향이 됨). 각 anchor의 radial factor를 살짝 다르게 줘
+    // 자연스러운 비대칭 — 1.0이면 정확한 ellipse 반지름, 0.92~1.05 범위로
+    // 약간씩 조절.
+    //
+    // 사진 reference(가로 긴 조약돌) 기반 factor 분포:
+    //   - right(0°): 1.02 — 우측이 가장 둥글게 부풀음
+    //   - top-right(45°): 0.97 — 우상단 살짝 안쪽
+    //   - top(90°): 0.92 — 위가 약간 평평
+    //   - top-left(135°): 0.95 — 좌상단 살짝 평평
+    //   - left(180°): 0.98 — 좌측 살짝 들어감
+    //   - bottom-left(225°): 1.00
+    //   - bottom(270°): 1.02 — 아래 둥글게 내려옴
+    //   - bottom-right(315°): 1.00
+    const radialFactors = [1.02, 0.97, 0.92, 0.95, 0.98, 1.00, 1.02, 1.00];
+    const rx = w / 2;
+    const ry = h / 2;
 
-    // 각 cubic bezier segment의 두 control point를 손으로 조정해 자연스런
-    // 둥근 곡선을 만든다. 비대칭이라 좌우 대칭 KAPPA 공식이 그대로 통하지
-    // 않아 hardcoded offsets 사용. 0.30~0.40 정도가 ellipse-like 곡률에
-    // 가까움.
     const path = new paper.Path({ insert: false });
-    path.moveTo(new paper.Point(P[0]));
+    for (let i = 0; i < 8; i++) {
+        const angle = (i * Math.PI) / 4; // 0, π/4, π/2, ...
+        const f = radialFactors[i];
+        path.add(new paper.Point(
+            f * rx * Math.cos(angle),
+            f * ry * Math.sin(angle)
+        ));
+    }
+    path.closed = true;
 
-    // P[0] → P[1] (left → top)
-    path.cubicCurveTo(
-        new paper.Point({ x: P[0].x + 0.08 * w, y: P[0].y - 0.40 * h }),
-        new paper.Point({ x: P[1].x - 0.30 * w, y: P[1].y - 0.04 * h }),
-        new paper.Point(P[1])
-    );
-    // P[1] → P[2] (top → right)
-    path.cubicCurveTo(
-        new paper.Point({ x: P[1].x + 0.30 * w, y: P[1].y + 0.04 * h }),
-        new paper.Point({ x: P[2].x - 0.04 * w, y: P[2].y - 0.35 * h }),
-        new paper.Point(P[2])
-    );
-    // P[2] → P[3] (right → bottom)
-    path.cubicCurveTo(
-        new paper.Point({ x: P[2].x - 0.04 * w, y: P[2].y + 0.35 * h }),
-        new paper.Point({ x: P[3].x + 0.30 * w, y: P[3].y - 0.04 * h }),
-        new paper.Point(P[3])
-    );
-    // P[3] → P[0] (bottom → left)
-    path.cubicCurveTo(
-        new paper.Point({ x: P[3].x - 0.30 * w, y: P[3].y + 0.04 * h }),
-        new paper.Point({ x: P[0].x + 0.08 * w, y: P[0].y + 0.40 * h }),
-        new paper.Point(P[0])
-    );
+    // Catmull-Rom spline: 각 anchor를 통과하는 부드러운 곡선으로 자동 변환.
+    // factor 0.5는 표준 Catmull-Rom(균등 tension). 더 크면 더 둥글게 부풀고
+    // 작으면 anchor 사이가 직선에 가까워짐.
+    path.smooth({ type: 'catmull-rom', factor: 0.5 });
 
-    path.closePath();
     return finalizePath(path);
 }
 
