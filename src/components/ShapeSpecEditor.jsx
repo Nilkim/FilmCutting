@@ -192,7 +192,7 @@ function KindForm({ shape, onUpdate }) {
                     scaleY={shape.scaleY || 1}
                 />
             )}
-            {/* circle has no extras */}
+            {/* circle / mirror has no extra params — width/height only */}
         </div>
     );
 }
