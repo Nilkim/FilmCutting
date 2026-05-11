@@ -43,7 +43,7 @@ const TOOLS = [
     { id: 'star', label: '별표', icon: <Star size={24} /> },
     { id: 'bubble', label: '말풍선', icon: <MessageSquare size={24} /> },
     { id: 'arch', label: '아치', icon: <ArchIcon size={24} /> },
-    { id: 'mirror', label: '거울', icon: <MirrorIcon size={24} /> },
+    { id: 'mirror', label: '조약돌', icon: <MirrorIcon size={24} /> },
     { id: 'text', label: '텍스트', icon: <Type size={24} /> },
 ];
 
