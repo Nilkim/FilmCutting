@@ -442,27 +442,38 @@ export function generateMirrorPath({ width, height }) {
     const w = Math.abs(width);
     const h = Math.abs(height);
 
-    // 8개 anchor: 각도 0°(우)부터 45° 간격, 반시계방향(Konva는 y-down이라
-    // 화면상 시계방향이 됨). 각 anchor의 radial factor를 살짝 다르게 줘
-    // 자연스러운 비대칭 — 1.0이면 정확한 ellipse 반지름, 0.92~1.05 범위로
-    // 약간씩 조절.
+    // 12개 anchor: 각도 0°(우)부터 30° 간격, 시계방향(Konva y-down).
+    // 사진 reference의 진짜 조약돌은 한쪽이 다른쪽의 2배 가까이 통통한
+    // 강한 비대칭 — factor 범위를 0.70~1.20으로 확장해 ellipse와 명확히
+    // 다른 organic 윤곽 만듦.
     //
-    // 사진 reference(가로 긴 조약돌) 기반 factor 분포:
-    //   - right(0°): 1.02 — 우측이 가장 둥글게 부풀음
-    //   - top-right(45°): 0.97 — 우상단 살짝 안쪽
-    //   - top(90°): 0.92 — 위가 약간 평평
-    //   - top-left(135°): 0.95 — 좌상단 살짝 평평
-    //   - left(180°): 0.98 — 좌측 살짝 들어감
-    //   - bottom-left(225°): 1.00
-    //   - bottom(270°): 1.02 — 아래 둥글게 내려옴
-    //   - bottom-right(315°): 1.00
-    const radialFactors = [1.02, 0.97, 0.92, 0.95, 0.98, 1.00, 1.02, 1.00];
+    // factor 분포: 좌측(180°)이 가장 통통(1.20), 우측(0°)이 가장 좁음(0.70).
+    // 좌측 끝 부풀고 우측으로 갈수록 좁아지는 "물방울 같은" 비대칭 조약돌.
+    // 위/아래(90°/270°)는 중간값으로 자연스런 곡률 전이.
+    //
+    // index → 각도 → 화면 방향:
+    //   0:0°=우(좁음), 1:30°, 2:60°, 3:90°=아래, 4:120°, 5:150°,
+    //   6:180°=좌(통통), 7:210°, 8:240°, 9:270°=위, 10:300°, 11:330°
+    const radialFactors = [
+        0.70,  // 0° 우(좁은 끝)
+        0.78,  // 30°
+        0.88,  // 60°
+        0.95,  // 90° 아래
+        1.05,  // 120°
+        1.15,  // 150°
+        1.20,  // 180° 좌(통통한 끝)
+        1.15,  // 210°
+        1.05,  // 240°
+        0.95,  // 270° 위
+        0.85,  // 300°
+        0.78,  // 330°
+    ];
     const rx = w / 2;
     const ry = h / 2;
 
     const path = new paper.Path({ insert: false });
-    for (let i = 0; i < 8; i++) {
-        const angle = (i * Math.PI) / 4; // 0, π/4, π/2, ...
+    for (let i = 0; i < radialFactors.length; i++) {
+        const angle = (i * 2 * Math.PI) / radialFactors.length;
         const f = radialFactors[i];
         path.add(new paper.Point(
             f * rx * Math.cos(angle),
@@ -472,9 +483,9 @@ export function generateMirrorPath({ width, height }) {
     path.closed = true;
 
     // Catmull-Rom spline: 각 anchor를 통과하는 부드러운 곡선으로 자동 변환.
-    // factor 0.5는 표준 Catmull-Rom(균등 tension). 더 크면 더 둥글게 부풀고
-    // 작으면 anchor 사이가 직선에 가까워짐.
-    path.smooth({ type: 'catmull-rom', factor: 0.5 });
+    // factor 0.6은 약간 둥글게 부풀음(0.5 표준보다 살짝 ↑). 강한 비대칭
+    // anchor 분포에서도 곡선이 매끄럽게 이어지도록.
+    path.smooth({ type: 'catmull-rom', factor: 0.6 });
 
     return finalizePath(path);
 }
