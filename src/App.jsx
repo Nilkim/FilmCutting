@@ -6,6 +6,7 @@ import AdminLoginPage from './pages/AdminLoginPage';
 import AdminLayoutPage from './pages/AdminLayoutPage';
 import AdminFilmsPage from './pages/AdminFilmsPage';
 import AdminOrdersPage from './pages/AdminOrdersPage';
+import AdminCustomShapesPage from './pages/AdminCustomShapesPage';
 
 function App() {
   return (
@@ -27,6 +28,7 @@ function App() {
           <Route index element={<Navigate to="films" replace />} />
           <Route path="films" element={<AdminFilmsPage />} />
           <Route path="orders" element={<AdminOrdersPage />} />
+          <Route path="custom-shapes" element={<AdminCustomShapesPage />} />
         </Route>
       </Routes>
     </BrowserRouter>
