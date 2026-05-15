@@ -14,7 +14,6 @@ import {
     generateBubblePath,
     generateTextPath,
     generateArchPath,
-    generateMirrorPath,
 } from './shapeGenerators';
 
 export const KIND_LABELS = {
@@ -24,7 +23,6 @@ export const KIND_LABELS = {
     star: '별',
     bubble: '말풍선',
     arch: '아치',
-    mirror: '조약돌',
     text: '텍스트',
 };
 
@@ -41,9 +39,6 @@ export const DEFAULT_PARAMS = {
     arch: {
         width: 100, height: 150, archHeight: 50, fillet: 0,
     },
-    // 거울: 사진의 약 3:2 비율을 default로. 비대칭 pebble 모양이라
-    // 가로가 길수록 자연스러운 거울 느낌.
-    mirror: { width: 150, height: 100 },
     text: { text: '텍스트', size: 30, fontId: 'noto-sans-kr', weight: 'regular' },
 };
 
@@ -63,8 +58,6 @@ export function generateForKind(kind, params) {
             return Promise.resolve(generateBubblePath(params));
         case 'arch':
             return Promise.resolve(generateArchPath(params));
-        case 'mirror':
-            return Promise.resolve(generateMirrorPath(params));
         case 'text':
             return generateTextPath(params);
         default:
