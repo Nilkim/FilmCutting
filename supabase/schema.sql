@@ -201,7 +201,73 @@ create policy "dxf_admin_delete"
   using (bucket_id = 'dxf-files');
 
 -- ============================================================
--- 6) Seed existing mock films (optional — remove if starting empty)
+-- 6) custom_shapes table — admin-curated freeform shapes (DXF imports)
+--    Stored as normalized SVG pathData + base size. The original DXF
+--    file itself is NOT kept (parsed once at registration time).
+-- ============================================================
+create table if not exists public.custom_shapes (
+  id                  uuid primary key default gen_random_uuid(),
+  name                text not null,
+  path_data           text not null,            -- normalized SVG path d
+  base_width          numeric not null,         -- mm
+  base_height         numeric not null,         -- mm
+  preview_image_url   text,
+  category            text,
+  is_active           boolean not null default true,
+  display_order       integer not null default 0,
+  created_at          timestamptz not null default now()
+);
+
+create index if not exists custom_shapes_active_order_idx
+  on public.custom_shapes (is_active, display_order);
+
+alter table public.custom_shapes enable row level security;
+
+-- public read of active rows; admin (authenticated) reads all
+drop policy if exists custom_shapes_public_read on public.custom_shapes;
+create policy custom_shapes_public_read
+  on public.custom_shapes for select
+  to anon, authenticated
+  using (is_active = true or auth.role() = 'authenticated');
+
+-- admin full write
+drop policy if exists custom_shapes_admin_write on public.custom_shapes;
+create policy custom_shapes_admin_write
+  on public.custom_shapes for all
+  to authenticated
+  using (true) with check (true);
+
+-- Preview thumbnail bucket — mirrors film-previews
+insert into storage.buckets (id, name, public)
+values ('custom-shape-previews', 'custom-shape-previews', true)
+on conflict (id) do nothing;
+
+drop policy if exists "custom_shape_previews_public_read" on storage.objects;
+create policy "custom_shape_previews_public_read"
+  on storage.objects for select
+  to anon, authenticated
+  using (bucket_id = 'custom-shape-previews');
+
+drop policy if exists "custom_shape_previews_admin_insert" on storage.objects;
+create policy "custom_shape_previews_admin_insert"
+  on storage.objects for insert
+  to authenticated
+  with check (bucket_id = 'custom-shape-previews');
+
+drop policy if exists "custom_shape_previews_admin_update" on storage.objects;
+create policy "custom_shape_previews_admin_update"
+  on storage.objects for update
+  to authenticated
+  using (bucket_id = 'custom-shape-previews');
+
+drop policy if exists "custom_shape_previews_admin_delete" on storage.objects;
+create policy "custom_shape_previews_admin_delete"
+  on storage.objects for delete
+  to authenticated
+  using (bucket_id = 'custom-shape-previews');
+
+-- ============================================================
+-- 7) Seed existing mock films (optional — remove if starting empty)
 -- ============================================================
 insert into public.films (name, color_hex, price_per_500, display_order)
 values
