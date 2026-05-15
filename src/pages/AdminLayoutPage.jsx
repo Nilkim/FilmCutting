@@ -57,6 +57,7 @@ function AdminLayoutPage() {
         </button>
         <div className={`admin-nav-links ${menuOpen ? 'open' : ''}`}>
           <Link to="/admin/films" onClick={() => setMenuOpen(false)}>필름 관리</Link>
+          <Link to="/admin/custom-shapes" onClick={() => setMenuOpen(false)}>비정형 도형 관리</Link>
           <Link to="/admin/orders" onClick={() => setMenuOpen(false)}>주문 관리</Link>
           <button className="admin-logout-btn" onClick={handleLogout}>
             로그아웃
