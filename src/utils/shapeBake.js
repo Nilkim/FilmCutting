@@ -25,10 +25,7 @@ import { generateForKind } from './shapeRegistry';
 // 실패 시 원본 shape 그대로 반환 (안전망).
 export async function bakeIfNeeded(shape) {
     if (!shape || !shape.kind || !shape.params) return shape;
-    // fillet/archHeight 같은 ratio 보존 대상 param이 없는 도형은 baking
-    // 의미 없음. text(폰트 size 별도), circle(타원 그 자체), mirror(비정형
-    // 곡선이 그대로 scale되는 게 의도) — 모두 비균일 scale을 그대로 받음.
-    if (shape.kind === 'text' || shape.kind === 'circle' || shape.kind === 'mirror') return shape;
+    if (shape.kind === 'text' || shape.kind === 'circle') return shape;
     const sx = shape.scaleX || 1;
     const sy = shape.scaleY || 1;
     if (sx === 1 && sy === 1) return shape;
