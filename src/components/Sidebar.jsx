@@ -16,24 +16,6 @@ const ArchIcon = ({ size = 24 }) => (
         <path d="M4 21 L4 11 A8 8 0 0 1 20 11 L20 21 Z" />
     </svg>
 );
-
-// Inline mirror/pebble icon — 비대칭 organic blob. lucide에 없어서 직접 작성.
-// 24x24 viewBox 안에서 비정형 타원 형태로, generator의 anchor 배치와 비슷한
-// 살짝 비대칭 4-bezier closed loop.
-const MirrorIcon = ({ size = 24 }) => (
-    <svg
-        width={size}
-        height={size}
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-    >
-        <path d="M2.5 11.5 C 3 5, 9 3, 13 4 C 19 5, 21.5 9, 21.5 13 C 21 19, 15 21, 11 20 C 5 19, 2 17, 2.5 11.5 Z" />
-    </svg>
-);
 import './Sidebar.css';
 
 const TOOLS = [
@@ -43,7 +25,6 @@ const TOOLS = [
     { id: 'star', label: '별표', icon: <Star size={24} /> },
     { id: 'bubble', label: '말풍선', icon: <MessageSquare size={24} /> },
     { id: 'arch', label: '아치', icon: <ArchIcon size={24} /> },
-    { id: 'mirror', label: '조약돌', icon: <MirrorIcon size={24} /> },
     { id: 'text', label: '텍스트', icon: <Type size={24} /> },
 ];
 
@@ -89,7 +70,50 @@ const FilmSection = ({ selectedFilm, onOpenFilmSelector }) => (
     </div>
 );
 
-const AddShapeSection = ({ onRequestShape }) => (
+// 관리자가 등록한 비정형 도형은 (0,0) 중심으로 정규화된 path이므로
+// viewBox를 baseWidth/Height 기준 중앙 정렬로 잡으면 24px 아이콘 안에서
+// 자연스럽게 보인다. 미리보기 이미지가 있으면 그걸 우선 사용.
+//
+// vector-effect="non-scaling-stroke"를 쓰면 viewBox 스케일과 무관하게
+// stroke가 항상 픽셀 단위로 그려져, 도형 크기·비율과 무관하게 lucide
+// 아이콘과 동일한 시각적 두께(2px)를 유지한다.
+const CustomShapeIcon = ({ shape, size = 24 }) => {
+    if (shape.previewImageUrl) {
+        return (
+            <img
+                src={shape.previewImageUrl}
+                alt={shape.name}
+                width={size}
+                height={size}
+                style={{ objectFit: 'contain' }}
+            />
+        );
+    }
+    const w = shape.baseWidth || 100;
+    const h = shape.baseHeight || 100;
+    const pad = Math.max(w, h) * 0.08;
+    const vbW = w + pad * 2;
+    const vbH = h + pad * 2;
+    return (
+        <svg
+            width={size}
+            height={size}
+            viewBox={`${-vbW / 2} ${-vbH / 2} ${vbW} ${vbH}`}
+            fill="none"
+            stroke="currentColor"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+        >
+            <path
+                d={shape.pathData}
+                strokeWidth="2"
+                vectorEffect="non-scaling-stroke"
+            />
+        </svg>
+    );
+};
+
+const AddShapeSection = ({ onRequestShape, customShapes = [] }) => (
     <div className="sidebar-section">
         <div className="sidebar-title">도형 추가</div>
         <div className="tools-grid">
@@ -102,6 +126,20 @@ const AddShapeSection = ({ onRequestShape }) => (
                 >
                     <div className="tool-icon">{tool.icon}</div>
                     <span className="tool-label">{tool.label}</span>
+                </button>
+            ))}
+            {customShapes.map(cs => (
+                <button
+                    key={cs.id}
+                    className="tool-btn"
+                    onClick={() => onRequestShape({ kind: 'custom', customShape: cs })}
+                    onMouseUp={(e) => e.currentTarget.blur()}
+                    title={cs.name}
+                >
+                    <div className="tool-icon">
+                        <CustomShapeIcon shape={cs} />
+                    </div>
+                    <span className="tool-label">{cs.name}</span>
                 </button>
             ))}
         </div>
@@ -157,6 +195,7 @@ const Sidebar = ({
     onImportDXF,
     selectedFilm,
     onOpenFilmSelector,
+    customShapes = [],
     section = 'all',
     className = '',
 }) => {
@@ -165,7 +204,7 @@ const Sidebar = ({
             <aside className={`sidebar sidebar-part ${className}`}>
                 <FilmSection selectedFilm={selectedFilm} onOpenFilmSelector={onOpenFilmSelector} />
                 <Divider />
-                <AddShapeSection onRequestShape={onRequestShape} />
+                <AddShapeSection onRequestShape={onRequestShape} customShapes={customShapes} />
             </aside>
         );
     }
@@ -182,7 +221,7 @@ const Sidebar = ({
         <aside className={`sidebar ${className}`}>
             <FilmSection selectedFilm={selectedFilm} onOpenFilmSelector={onOpenFilmSelector} />
             <Divider />
-            <AddShapeSection onRequestShape={onRequestShape} />
+            <AddShapeSection onRequestShape={onRequestShape} customShapes={customShapes} />
             <Divider />
             <EditSection onMergeShapes={onMergeShapes} />
             <Divider />
