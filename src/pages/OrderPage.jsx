@@ -6,6 +6,7 @@ import { processTargetBoolean } from '../utils/shapeBoolean';
 import { exportShapesToDXF, importDXFtoShapes } from '../utils/dxfExport';
 import { useHistory } from '../hooks/useHistory';
 import { useFilms } from '../hooks/useFilms';
+import { useCustomShapes } from '../hooks/useCustomShapes';
 import { useReorderLoader } from '../hooks/useReorderLoader';
 import { bakeIfNeeded } from '../utils/shapeBake';
 import { supabase } from '../lib/supabase';
@@ -92,6 +93,7 @@ const Stepper = ({ currentStep, onStepClick, canGoStep2, canGoStep3 }) => {
 function OrderPage() {
   const navigate = useNavigate();
   const { films, loading: filmsLoading } = useFilms();
+  const { customShapes } = useCustomShapes();
   const [selectedFilm, setSelectedFilm] = useState(null);
   const [isModalOpen, setIsModalOpen] = useState(true);
   const { state: shapes, set: setShapes, undo, redo, canUndo, canRedo } = useHistory([], 5);
@@ -173,10 +175,36 @@ function OrderPage() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [undo, redo]);
 
-  const handleRequestShape = async (kind) => {
+  // Sidebar 버튼이 두 가지 시그니처로 호출한다:
+  //   1) 기존 파라메트릭 도형: 문자열 ('rect', 'circle', ...)
+  //   2) 관리자 등록 비정형 도형: { kind: 'custom', customShape: {...} }
+  // 비정형 도형은 type: 'path'로 캔버스에 추가되어 기존 DXF 임포트 도형과
+  // 동일한 코드 경로를 탄다. kind/params가 없으므로 ShapeSpecEditor의
+  // KindForm은 자동으로 숨겨지고 가로/세로/회전만 노출된다.
+  const handleRequestShape = async (request) => {
     setSidebarOpen(false);
     try {
-      const base = await createDefaultShapeData(kind);
+      if (typeof request === 'object' && request !== null && request.kind === 'custom') {
+        const cs = request.customShape;
+        const newShape = {
+          id: uuidv4(),
+          type: 'path',
+          data: cs.pathData,
+          x: 610,
+          y: 400,
+          width: cs.baseWidth,
+          height: cs.baseHeight,
+          rotation: 0,
+          scaleX: 1,
+          scaleY: 1,
+          isDxf: true,
+        };
+        setShapes((prev) => [...prev, newShape]);
+        handleSelectShape(newShape.id);
+        return;
+      }
+
+      const base = await createDefaultShapeData(request);
       const newShape = {
         id: uuidv4(),
         type: 'parametric',
@@ -568,6 +596,7 @@ function OrderPage() {
             onImportDXF={handleImportDXF}
             selectedFilm={selectedFilm}
             onOpenFilmSelector={() => { setIsModalOpen(true); setSidebarOpen(false); }}
+            customShapes={customShapes}
           />
         </div>
 
@@ -577,6 +606,7 @@ function OrderPage() {
             onRequestShape={handleRequestShape}
             selectedFilm={selectedFilm}
             onOpenFilmSelector={() => setIsModalOpen(true)}
+            customShapes={customShapes}
           />
         </div>
 
