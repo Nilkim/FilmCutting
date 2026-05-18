@@ -186,6 +186,12 @@ function OrderPage() {
     try {
       if (typeof request === 'object' && request !== null && request.kind === 'custom') {
         const cs = request.customShape;
+        // isDxf 플래그를 두지 않는다. 관리자 카탈로그의 비정형 도형은
+        // 일반 도형(rect/circle 등)과 동일하게 내부가 필름 색으로 채워지고
+        // boolean 연산(합치기/빼기) 대상이 되어야 한다. 기존 "도면직접입력
+        // (dxf)" 버튼으로 import한 도형(handleImportDXF → importDXFtoShapes)은
+        // 여전히 isDxf:true로 외곽선만 표시되어 사용 의도가 다른 두 흐름이
+        // 분리된다.
         const newShape = {
           id: uuidv4(),
           type: 'path',
@@ -197,7 +203,6 @@ function OrderPage() {
           rotation: 0,
           scaleX: 1,
           scaleY: 1,
-          isDxf: true,
         };
         setShapes((prev) => [...prev, newShape]);
         handleSelectShape(newShape.id);
