@@ -26,6 +26,51 @@ function bulgeThroughPoint(v1, v2, bulge) {
     return new paper.Point(cx + px * sagitta, cy + py * sagitta);
 }
 
+// DXF는 외곽선을 LINE/ARC/SPLINE 등 여러 entity로 쪼개 표현하는 경우가
+// 많다. 각 entity별로 만든 paper.Path 들을 단순 string join하면 SVG는
+// 'M...M...M...'처럼 별개의 sub-path로 해석해 fill 시 ring이 끊긴 채로
+// 그려진다. 인접 path들의 끝점이 tolerance(mm) 이내라면 paper.js의
+// path.join API로 하나의 연속 path로 묶어 닫힌 ring을 형성한다.
+//
+// path.join(other, tolerance)는 끝점 매칭(시작-시작/시작-끝/끝-시작/끝-끝)
+// 4가지 케이스를 자동 처리한다. greedy하게 진행하다 더 이상 합쳐지지
+// 않으면 종료. 남은 path들은 별도 ring으로 남겨 CompoundPath에서 자연스럽게
+// evenodd 채움 룰의 대상이 된다.
+function joinPathsWithTolerance(paths, tolerance) {
+    if (!paths || paths.length <= 1) return paths || [];
+    const result = [paths[0]];
+    const remaining = paths.slice(1);
+
+    let progressed = true;
+    while (remaining.length > 0 && progressed) {
+        progressed = false;
+        outer: for (let i = 0; i < result.length; i++) {
+            for (let j = 0; j < remaining.length; j++) {
+                const before = result[i].segments ? result[i].segments.length : 0;
+                result[i].join(remaining[j], tolerance);
+                const after = result[i].segments ? result[i].segments.length : 0;
+                if (after > before) {
+                    remaining.splice(j, 1);
+                    progressed = true;
+                    break outer;
+                }
+            }
+        }
+    }
+    result.push(...remaining);
+
+    // 끝점이 거의 일치하는 path는 닫힘으로 표시 → fill 시 한 ring으로 인식
+    result.forEach(p => {
+        if (!p.closed && p.firstSegment && p.lastSegment) {
+            const d = p.firstSegment.point.getDistance(p.lastSegment.point);
+            if (d <= tolerance) {
+                p.closed = true;
+            }
+        }
+    });
+    return result;
+}
+
 function addPolylineSegments(p, vertices, closed) {
     if (!vertices || vertices.length === 0) return;
     p.moveTo(new paper.Point(vertices[0].x, vertices[0].y));
@@ -190,8 +235,13 @@ export function importDXFtoShapes(dxfString) {
             }
         });
 
-        // Do not join any paths. Raw DXF topological structure must be strictly preserved.
-        let combinedData = validPaths.map(p => p.pathData).join(" ");
+        // 끝점이 1mm 이내로 인접한 entity들은 하나의 닫힌 ring으로 합친다.
+        // ARC + ARC + LINE 등으로 쪼개진 외곽선이 fill 시 끊어진 조각처럼
+        // 그려지는 증상을 해결. join은 도형의 topology를 바꾸지 않으면서
+        // SVG 표현만 'M...M...'에서 'M...L...A...Z'로 합쳐주는 것이라
+        // 시각적 결과/cut path는 그대로 보존된다.
+        const joined = joinPathsWithTolerance(validPaths, 1.0);
+        let combinedData = joined.map(p => p.pathData).join(" ");
 
         let unionPath = null;
         if (validPaths.length > 0 && combinedData.trim()) {
