@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
+import OrderThumbnail from '../components/OrderThumbnail';
 import './OrderLookupPage.css';
 
 function formatPhone(input) {
@@ -134,26 +135,34 @@ export default function OrderLookupPage({ embedded = false, onClose, onSelectReo
               const film = order.film_snapshot || {};
               return (
                 <div key={order.order_code} className="order-card">
-                  <div className="order-card-row">
-                    <span className="order-code">{order.order_code}</span>
-                    <StatusBadge status={order.status} />
-                  </div>
-                  <div className="order-card-row">
-                    <span className="order-date">{formatDate(order.created_at)}</span>
-                  </div>
-                  <div className="order-card-row">
-                    <div className="film-row">
-                      <span
-                        className="film-swatch"
-                        style={{ background: film.color_hex || '#e2e8f0' }}
-                      />
-                      <span className="film-name">{film.name || '필름 정보 없음'}</span>
+                  <div className="order-card-main">
+                    <OrderThumbnail
+                      shapes={order.shapes_json}
+                      filmColor={film.color_hex || '#e2e8f0'}
+                    />
+                    <div className="order-card-body">
+                      <div className="order-card-row">
+                        <span className="order-code">{order.order_code}</span>
+                        <StatusBadge status={order.status} />
+                      </div>
+                      <div className="order-card-row">
+                        <span className="order-date">{formatDate(order.created_at)}</span>
+                      </div>
+                      <div className="order-card-row">
+                        <div className="film-row">
+                          <span
+                            className="film-swatch"
+                            style={{ background: film.color_hex || '#e2e8f0' }}
+                          />
+                          <span className="film-name">{film.name || '필름 정보 없음'}</span>
+                        </div>
+                        <span className="order-meta">{order.unit_count} × 0.5m</span>
+                      </div>
+                      <div className="order-card-row">
+                        <span className="order-meta">총 금액</span>
+                        <span className="order-price">{formatPrice(order.total_price)}</span>
+                      </div>
                     </div>
-                    <span className="order-meta">{order.unit_count} × 0.5m</span>
-                  </div>
-                  <div className="order-card-row">
-                    <span className="order-meta">총 금액</span>
-                    <span className="order-price">{formatPrice(order.total_price)}</span>
                   </div>
                   <button
                     type="button"
