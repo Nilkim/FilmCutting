@@ -236,45 +236,45 @@ export function importDXFtoShapes(dxfString) {
         });
 
         // 1단계: 끝점이 가까운 entity들을 하나의 연속 path로 합친다.
-        // CAD 출력의 정밀도가 떨어지거나 단위 변환 과정에서 끝점 간 약간의
-        // 어긋남이 발생하는 케이스가 많아, 톨러런스를 mm 단위로 넉넉히
-        // 잡는다(5mm). 외곽선 단일 ring 형성이 목적이고, 그 안에서 일어나는
-        // chord/곡선 단순화는 이후 union이 흡수한다.
+        // tolerance 5mm — CAD 정밀도 / 단위 변환 누적 오차를 흡수.
         const joined = joinPathsWithTolerance(validPaths, 5.0);
 
-        // 2단계: 남은 open path를 강제로 closed로 처리한다.
-        // CAD가 polyline 외에 ARC/LINE을 별도 entity로 같이 출력하는 케이스,
-        // 또는 join 후에도 미세하게 끝점이 안 맞아 남는 open path가
-        // 시각적으로 외곽선만 그려지고 fill에서 빠지는 증상을 막기 위함.
-        // 도형의 cut path가 의도와 어긋날 위험이 있지만, 시각적으로 비어
-        // 보이는 것보단 union으로 흡수되어 일관된 outline을 제공하는 게 낫다.
+        // 2단계: 남은 open path를 강제로 closed 처리. closed인 ring만
+        // 외곽선 후보로 평가할 수 있게 한다.
         joined.forEach(p => {
             if (!p.closed && p.firstSegment && p.lastSegment) {
                 p.closed = true;
             }
         });
 
-        // 3단계: 모든 closed ring을 paper.PathItem.unite()로 합쳐 단일
-        // outline + 진짜 구멍(서로 분리된 ring)만 남김. 다각형 + 곡선 ring이
-        // 겹쳐 있으면 union이 알아서 외곽선 outline 하나로 통합한다.
-        let mergedRing = null;
-        if (joined.length === 1) {
-            mergedRing = joined[0];
-        } else if (joined.length > 1) {
-            mergedRing = joined[0].clone({ insert: false });
-            for (let i = 1; i < joined.length; i++) {
-                const prev = mergedRing;
-                mergedRing = prev.unite(joined[i], { insert: false });
-                prev.remove();
+        // 3단계: **가장 면적이 큰 ring 하나만** 외곽선으로 채택.
+        //
+        // 배경: CAD 프로그램이 같은 외곽선을 LINE/ARC primitive와 POLYLINE
+        // 두 가지 방식으로 이중 출력하는 케이스가 흔하다(자동 인덱싱 등).
+        // 둘은 거의 동일한 영역을 차지하는 self-overlapping ring이 되어,
+        // paper.PathItem.unite()로 합치면 일부 segment가 손실되거나 chord로
+        // fallback되어 결과가 깨졌다. union을 시도하지 않고 "가장 큰 ring
+        // 하나만 사용"하면 두 ring이 거의 동일한 외곽선을 가리키는 케이스에서
+        // 의도된 outline을 그대로 보존할 수 있다.
+        //
+        // Trade-off: 도넛 / 내부 구멍이 있는 도형은 더 이상 자동 지원되지
+        // 않는다. 필요하면 도형합치기/도형빼기 boolean 연산으로 만들 수 있고,
+        // 비정형 도형 카탈로그에서 도넛 사용 빈도는 낮아 수용 가능.
+        let largestRing = null;
+        let maxArea = 0;
+        joined.forEach(p => {
+            if (!p.closed) return;
+            const a = Math.abs(p.area || 0);
+            if (a > maxArea) {
+                maxArea = a;
+                largestRing = p;
             }
-            joined.forEach(p => p.remove());
-        }
+        });
 
         let unionPath = null;
-        if (mergedRing && mergedRing.pathData && mergedRing.pathData.trim()) {
-            unionPath = new paper.CompoundPath({ pathData: mergedRing.pathData, insert: false });
+        if (largestRing && largestRing.pathData && largestRing.pathData.trim()) {
+            unionPath = new paper.CompoundPath({ pathData: largestRing.pathData, insert: false });
         }
-        if (mergedRing) mergedRing.remove();
 
         if (!unionPath || !unionPath.pathData.trim()) {
             return null;
