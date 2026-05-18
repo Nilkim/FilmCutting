@@ -235,43 +235,44 @@ export function importDXFtoShapes(dxfString) {
             }
         });
 
-        // 끝점이 1mm 이내로 인접한 entity들은 하나의 닫힌 ring으로 합친다.
-        // ARC + ARC + LINE 등으로 쪼개진 외곽선이 fill 시 끊어진 조각처럼
-        // 그려지는 1단계 보정. 다만 일부 path.join 결과가 곡선을 잃고
-        // chord 직선으로 fallback되거나, CAD 프로그램이 외곽 ARC + 인덱스
-        // LWPOLYLINE을 이중 출력하는 경우 closed ring이 여러 개로 남아
-        // evenodd 룰에서 안쪽이 "구멍"으로 그려지는 부작용 발생.
-        const joined = joinPathsWithTolerance(validPaths, 1.0);
+        // 1단계: 끝점이 가까운 entity들을 하나의 연속 path로 합친다.
+        // CAD 출력의 정밀도가 떨어지거나 단위 변환 과정에서 끝점 간 약간의
+        // 어긋남이 발생하는 케이스가 많아, 톨러런스를 mm 단위로 넉넉히
+        // 잡는다(5mm). 외곽선 단일 ring 형성이 목적이고, 그 안에서 일어나는
+        // chord/곡선 단순화는 이후 union이 흡수한다.
+        const joined = joinPathsWithTolerance(validPaths, 5.0);
 
-        // 2단계: closed ring 모두를 paper.PathItem.unite()로 합쳐 단일
-        // outline + 진짜 구멍(서로 분리된 ring)만 남김. 외곽 ring 안에
-        // 다른 ring이 포함된 경우 union 결과는 외곽 outline만 가진 path가
-        // 되어 fill이 깔끔하게 들어간다. open path(닫히지 않은 보조선)는
-        // union 대상에서 제외하고 그대로 보존.
-        const closedRings = joined.filter(p => p.closed);
-        const openPaths = joined.filter(p => !p.closed);
+        // 2단계: 남은 open path를 강제로 closed로 처리한다.
+        // CAD가 polyline 외에 ARC/LINE을 별도 entity로 같이 출력하는 케이스,
+        // 또는 join 후에도 미세하게 끝점이 안 맞아 남는 open path가
+        // 시각적으로 외곽선만 그려지고 fill에서 빠지는 증상을 막기 위함.
+        // 도형의 cut path가 의도와 어긋날 위험이 있지만, 시각적으로 비어
+        // 보이는 것보단 union으로 흡수되어 일관된 outline을 제공하는 게 낫다.
+        joined.forEach(p => {
+            if (!p.closed && p.firstSegment && p.lastSegment) {
+                p.closed = true;
+            }
+        });
 
+        // 3단계: 모든 closed ring을 paper.PathItem.unite()로 합쳐 단일
+        // outline + 진짜 구멍(서로 분리된 ring)만 남김. 다각형 + 곡선 ring이
+        // 겹쳐 있으면 union이 알아서 외곽선 outline 하나로 통합한다.
         let mergedRing = null;
-        if (closedRings.length === 1) {
-            mergedRing = closedRings[0];
-        } else if (closedRings.length > 1) {
-            mergedRing = closedRings[0].clone({ insert: false });
-            for (let i = 1; i < closedRings.length; i++) {
+        if (joined.length === 1) {
+            mergedRing = joined[0];
+        } else if (joined.length > 1) {
+            mergedRing = joined[0].clone({ insert: false });
+            for (let i = 1; i < joined.length; i++) {
                 const prev = mergedRing;
-                mergedRing = prev.unite(closedRings[i], { insert: false });
+                mergedRing = prev.unite(joined[i], { insert: false });
                 prev.remove();
             }
-            closedRings.forEach(p => p.remove());
+            joined.forEach(p => p.remove());
         }
 
-        const dataParts = [];
-        if (mergedRing && mergedRing.pathData) dataParts.push(mergedRing.pathData);
-        openPaths.forEach(p => { if (p.pathData) dataParts.push(p.pathData); });
-        let combinedData = dataParts.join(" ");
-
         let unionPath = null;
-        if (combinedData.trim()) {
-            unionPath = new paper.CompoundPath({ pathData: combinedData, insert: false });
+        if (mergedRing && mergedRing.pathData && mergedRing.pathData.trim()) {
+            unionPath = new paper.CompoundPath({ pathData: mergedRing.pathData, insert: false });
         }
         if (mergedRing) mergedRing.remove();
 
