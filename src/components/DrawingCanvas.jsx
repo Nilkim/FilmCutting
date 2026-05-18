@@ -353,7 +353,10 @@ const ShapeObject = ({ shapeProps, isSelected, onSelect, onRequestSpecEdit, onCh
             ShapeComponent = <Path data={SpeechBubblePath} {...commonProps} />;
             break;
         case 'path':
-            ShapeComponent = <Path data={shapeProps.data} {...commonProps} />;
+            // fillRule='evenodd' — DXF import 결과는 외곽 ring + 내부 구멍
+            // 같은 다중 sub-path를 가질 수 있어, parametric과 동일한 even-odd
+            // 규칙으로 채우면 구멍이 투명하게 표현된다.
+            ShapeComponent = <Path data={shapeProps.data} fillRule="evenodd" {...commonProps} />;
             break;
         default:
             ShapeComponent = null;
