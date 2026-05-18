@@ -170,8 +170,25 @@ export function importDXFtoShapes(dxfString) {
 
         let validPaths = [];
 
+        // CAD 프로그램이 같은 외곽선을 LINE/ARC primitive와 POLYLINE 두
+        // 방식으로 이중 출력하는 경우가 흔하다. 둘이 같은 영역을 반대
+        // 방향으로 그리면 paper.js의 path.join이 합쳐도 self-intersecting
+        // ring이 되어 net area가 0에 가까워지고 fill 결과가 깨진다.
+        //
+        // primitive(LINE/ARC/CIRCLE/SPLINE)가 하나라도 있으면 POLYLINE을
+        // 보조선으로 간주하고 무시한다. 사용자가 외곽선을 polyline으로만
+        // 그린 도면(primitive 없음)에서는 polyline을 그대로 사용한다.
+        // Node 시뮬레이션으로 FF.dxf 결과가 area -3.7 → 35630.4 mm²로
+        // 회복되는 것을 확인한 룰.
+        const hasPrimitives = dxfData.entities.some(e =>
+            e.type === 'LINE' || e.type === 'ARC' || e.type === 'CIRCLE' || e.type === 'SPLINE'
+        );
+
         // Manually build clean Paper.js paths from DXF entities to ensure correct SVG pathData output
         dxfData.entities.forEach(ent => {
+            if (hasPrimitives && (ent.type === 'LWPOLYLINE' || ent.type === 'POLYLINE')) {
+                return; // 외곽선의 보조 polyline은 무시 — 위 주석 참고
+            }
             let p = null;
             if (ent.type === 'LINE') {
                 p = new paper.Path.Line({
