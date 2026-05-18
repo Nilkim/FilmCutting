@@ -2,6 +2,7 @@ import React, { useRef, useEffect, useState, useMemo } from 'react';
 import { Stage, Layer, Group, Rect, Circle, RegularPolygon, Star, Path, Line, Text, Transformer } from 'react-konva';
 import paper from 'paper';
 import { bakeIfNeeded } from '../utils/shapeBake';
+import { computeLocalBounds } from '../utils/shapeBounds';
 import './DrawingCanvas.css';
 
 // Physics scale: Let's assume 1mm = 1px for easy mapping.
@@ -69,36 +70,15 @@ const DimensionLabels = ({ shape, canvasScale }) => {
     );
 };
 
-// 도형 하나의 **local bounds**(원점 기준, scaleX/Y와 rotation 적용된 후의
-// path 외곽 박스)를 계산. shape.x/y는 더하지 않는다 — 호출처가 필요 시
-// 더해서 world coord으로 변환. Paper.js로 정확한 회전/스케일 후 bounds를
-// 뽑으므로 회전된 도형도 정확. pathData 없는 primitive shape엔 fallback
-// (width/height 또는 radius 기반 단순 박스).
+// computeLocalBounds는 ../utils/shapeBounds로 추출. 같은 계산을
+// OrderThumbnail이 viewBox용으로 재사용한다.
 //
 // 용도:
 //   - DebugBillableOverlay: 빨간 dashed 4면 박스 시각화
 //   - ShapeObject.dragBoundFunc: 좌/우/상 캔버스 경계 clamp
 //   - ShapeObject.onTransformEnd: resize/rotate 후 x/y clamp
 //   - OrderPage maxLength: bottom 기반 billable 계산 (별도 코드 — 향후 통합 가능)
-const computeLocalBounds = (shape) => {
-    const sx = shape.scaleX || 1;
-    const sy = shape.scaleY || 1;
-    const data = shape.pathData || shape.data;
-    if (data) {
-        if (!paper.project) paper.setup(new paper.Size(1, 1));
-        const item = paper.PathItem.create(data);
-        item.scale(sx, sy, new paper.Point(0, 0));
-        if (shape.rotation) item.rotate(shape.rotation, new paper.Point(0, 0));
-        const b = item.bounds;
-        const out = { left: b.left, right: b.right, top: b.top, bottom: b.bottom };
-        item.remove();
-        return out;
-    }
-    // pathData 없는 legacy primitive 폴백 — 중심 정렬 단순 박스
-    const w = (shape.width || (shape.radius || 0) * 2 || 100) * sx;
-    const h = (shape.height || (shape.radius || 0) * 2 || 100) * sy;
-    return { left: -w / 2, right: w / 2, top: -h / 2, bottom: h / 2 };
-};
+//   - OrderThumbnail: 주문 조회 카드 SVG 썸네일 viewBox 계산
 
 // World coord bounds — debug overlay에서 그대로 그릴 수 있는 절대 좌표.
 const computeWorldBounds = (shape) => {
