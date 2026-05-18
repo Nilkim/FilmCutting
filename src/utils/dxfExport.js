@@ -237,17 +237,43 @@ export function importDXFtoShapes(dxfString) {
 
         // 끝점이 1mm 이내로 인접한 entity들은 하나의 닫힌 ring으로 합친다.
         // ARC + ARC + LINE 등으로 쪼개진 외곽선이 fill 시 끊어진 조각처럼
-        // 그려지는 증상을 해결. join은 도형의 topology를 바꾸지 않으면서
-        // SVG 표현만 'M...M...'에서 'M...L...A...Z'로 합쳐주는 것이라
-        // 시각적 결과/cut path는 그대로 보존된다.
+        // 그려지는 1단계 보정. 다만 일부 path.join 결과가 곡선을 잃고
+        // chord 직선으로 fallback되거나, CAD 프로그램이 외곽 ARC + 인덱스
+        // LWPOLYLINE을 이중 출력하는 경우 closed ring이 여러 개로 남아
+        // evenodd 룰에서 안쪽이 "구멍"으로 그려지는 부작용 발생.
         const joined = joinPathsWithTolerance(validPaths, 1.0);
-        let combinedData = joined.map(p => p.pathData).join(" ");
+
+        // 2단계: closed ring 모두를 paper.PathItem.unite()로 합쳐 단일
+        // outline + 진짜 구멍(서로 분리된 ring)만 남김. 외곽 ring 안에
+        // 다른 ring이 포함된 경우 union 결과는 외곽 outline만 가진 path가
+        // 되어 fill이 깔끔하게 들어간다. open path(닫히지 않은 보조선)는
+        // union 대상에서 제외하고 그대로 보존.
+        const closedRings = joined.filter(p => p.closed);
+        const openPaths = joined.filter(p => !p.closed);
+
+        let mergedRing = null;
+        if (closedRings.length === 1) {
+            mergedRing = closedRings[0];
+        } else if (closedRings.length > 1) {
+            mergedRing = closedRings[0].clone({ insert: false });
+            for (let i = 1; i < closedRings.length; i++) {
+                const prev = mergedRing;
+                mergedRing = prev.unite(closedRings[i], { insert: false });
+                prev.remove();
+            }
+            closedRings.forEach(p => p.remove());
+        }
+
+        const dataParts = [];
+        if (mergedRing && mergedRing.pathData) dataParts.push(mergedRing.pathData);
+        openPaths.forEach(p => { if (p.pathData) dataParts.push(p.pathData); });
+        let combinedData = dataParts.join(" ");
 
         let unionPath = null;
-        if (validPaths.length > 0 && combinedData.trim()) {
-            // we don't need evenodd or any fill rules if we aren't filling
+        if (combinedData.trim()) {
             unionPath = new paper.CompoundPath({ pathData: combinedData, insert: false });
         }
+        if (mergedRing) mergedRing.remove();
 
         if (!unionPath || !unionPath.pathData.trim()) {
             return null;
